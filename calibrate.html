@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Calibrate (A4)</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <div class="app">
+      <header class="topbar">
+        <div class="topbar__title">Calibration (A4)</div>
+        <div class="topbar__actions">
+          <a class="btn btn--primary" href="./index.html">Go to packer</a>
+        </div>
+      </header>
+
+      <main class="main" style="grid-template-columns: 1fr 360px">
+        <section class="panel panel--left">
+          <div class="panel__title">Match your real A4 sheet</div>
+
+          <div class="calInfo">
+            <div class="calInfo__line">
+              Put a real A4 sheet against your screen. Adjust the slider until the on-screen A4 outline matches it.
+            </div>
+            <div class="calInfo__line mono">
+              A4 size: 21.0 × 29.7 cm (portrait) or 29.7 × 21.0 cm (landscape)
+            </div>
+          </div>
+
+          <div class="calStage">
+            <div id="a4Outline" class="a4Outline" aria-label="A4 outline"></div>
+          </div>
+        </section>
+
+        <section class="panel panel--right">
+          <div class="panel__title">Calibration</div>
+          <div class="settings">
+            <div class="setting">
+              <label class="setting__label" for="calOrientation">A4 orientation</label>
+              <select id="calOrientation">
+                <option value="portrait" selected>Portrait (21.0 cm wide)</option>
+                <option value="landscape">Landscape (29.7 cm wide)</option>
+              </select>
+            </div>
+            <div class="setting">
+              <label class="setting__label" for="ppcm">Pixels per cm</label>
+              <input id="ppcm" type="number" min="5" max="200" step="0.1" value="26" />
+            </div>
+            <div class="setting">
+              <label class="setting__label" for="ppcmSlider">Adjust</label>
+              <input id="ppcmSlider" type="range" min="10" max="120" step="0.5" value="26" />
+            </div>
+          </div>
+          <div class="panel__footer">
+            <div class="status">
+              Saved in your browser as <span class="mono">ppcm</span>. The packer page will use this for accurate cm previews.
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script>
+      const A4 = {
+        portrait: { wCm: 21.0, hCm: 29.7 },
+        landscape: { wCm: 29.7, hCm: 21.0 },
+      };
+
+      const outline = document.getElementById("a4Outline");
+      const calOrientation = document.getElementById("calOrientation");
+      const ppcm = document.getElementById("ppcm");
+      const ppcmSlider = document.getElementById("ppcmSlider");
+
+      function setPpcm(v) {
+        const n = Number(v);
+        const safe = Number.isFinite(n) ? Math.max(5, Math.min(200, n)) : 26;
+        document.documentElement.style.setProperty("--ppcm", String(safe));
+        ppcm.value = safe.toFixed(1);
+        ppcmSlider.value = String(safe);
+        try { localStorage.setItem("ppcm", String(safe)); } catch {}
+        updateOutline();
+      }
+
+      function updateOutline() {
+        const ori = calOrientation.value;
+        const { wCm, hCm } = A4[ori];
+        const cssPpcm = Number(getComputedStyle(document.documentElement).getPropertyValue("--ppcm")) || 26;
+        outline.style.width = `${wCm * cssPpcm}px`;
+        outline.style.height = `${hCm * cssPpcm}px`;
+      }
+
+      // Load saved calibration if present
+      try {
+        const saved = Number(localStorage.getItem("ppcm"));
+        if (Number.isFinite(saved) && saved > 0) setPpcm(saved);
+        else setPpcm(Number(ppcm.value));
+      } catch {
+        setPpcm(Number(ppcm.value));
+      }
+
+      calOrientation.addEventListener("change", updateOutline);
+      ppcm.addEventListener("input", () => setPpcm(ppcm.value));
+      ppcmSlider.addEventListener("input", () => setPpcm(ppcmSlider.value));
+
+      updateOutline();
+    </script>
+  </body>
+</html>
+
