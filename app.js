@@ -345,7 +345,7 @@ async function exportPdf(state) {
   const { PDFDocument, degrees, rgb } = PDFLib;
   const pdfDoc = await PDFDocument.create();
 
-  const marginCm = Number(state.marginCm.value || 1.5);
+  const marginCm = Number(state.marginCm.value || 0.5);
   const gutterCm = Number(state.gutterCm.value || 0.3);
   const orientation = state.orientation.value;
   const borderMode = state.borderMode.value;
