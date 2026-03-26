@@ -473,12 +473,16 @@ function setup() {
     setText(totalLabel, String(state.images.length));
 
     stageImg.src = img.dataUrl;
+    stageImg.style.transformOrigin = "center center";
     stageImg.style.transform = img.rotate90 ? "rotate(90deg)" : "none";
 
     // Visual size in the 18x27cm frame, using calibrated CSS --ppcm scaling.
     const cssPpcm = Number(getComputedStyle(document.documentElement).getPropertyValue("--ppcm")) || 26;
-    stageImg.style.width = `${img.wCm * cssPpcm}px`;
-    stageImg.style.height = `${img.hCm * cssPpcm}px`;
+    // When rotated, the bounding box swaps (H×W). Swap CSS size so the rotated box remains W×H.
+    const wPx = (img.rotate90 ? img.hCm : img.wCm) * cssPpcm;
+    const hPx = (img.rotate90 ? img.wCm : img.hCm) * cssPpcm;
+    stageImg.style.width = `${wPx}px`;
+    stageImg.style.height = `${hPx}px`;
 
     setText(printedSizeLabel, `${fmtCm(img.wCm)} × ${fmtCm(img.hCm)}`);
     setText(clampedLabel, img.clamped ? "YES (auto)" : "no");
