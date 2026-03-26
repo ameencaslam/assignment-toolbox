@@ -51,7 +51,8 @@ async function fileToDataUrl(file) {
 async function decodeImageSize(dataUrl) {
   return new Promise((resolve, reject) => {
     const img = new Image();
-    img.onload = () => resolve({ wPx: img.naturalWidth, hPx: img.naturalHeight });
+    img.onload = () =>
+      resolve({ wPx: img.naturalWidth, hPx: img.naturalHeight });
     img.onerror = () => reject(new Error("Failed to load image"));
     img.src = dataUrl;
   });
@@ -123,15 +124,30 @@ function packToA4(items, { marginCm, gutterCm, orientation }) {
     }
     // Bottom slice
     if (usedBottom < freeBottom - eps) {
-      out.push({ x: free.x, y: usedBottom, w: free.w, h: clamp0(freeBottom - usedBottom) });
+      out.push({
+        x: free.x,
+        y: usedBottom,
+        w: free.w,
+        h: clamp0(freeBottom - usedBottom),
+      });
     }
     // Left slice
     if (used.x > free.x + eps) {
-      out.push({ x: free.x, y: iy1, w: clamp0(used.x - free.x), h: clamp0(iy2 - iy1) });
+      out.push({
+        x: free.x,
+        y: iy1,
+        w: clamp0(used.x - free.x),
+        h: clamp0(iy2 - iy1),
+      });
     }
     // Right slice
     if (usedRight < freeRight - eps) {
-      out.push({ x: usedRight, y: iy1, w: clamp0(freeRight - usedRight), h: clamp0(iy2 - iy1) });
+      out.push({
+        x: usedRight,
+        y: iy1,
+        w: clamp0(freeRight - usedRight),
+        h: clamp0(iy2 - iy1),
+      });
     }
 
     return out.filter((r) => r.w > eps && r.h > eps);
@@ -219,7 +235,13 @@ function packToA4(items, { marginCm, gutterCm, orientation }) {
         rotate90: placement.rotate90,
       });
 
-      const used = placeIntoFreeRect(placement.free, placement.x, placement.y, placement.w, placement.h);
+      const used = placeIntoFreeRect(
+        placement.free,
+        placement.x,
+        placement.y,
+        placement.w,
+        placement.h,
+      );
 
       // Update free rectangles: split any that intersect the used rect.
       const nextFree = [];
@@ -251,7 +273,7 @@ function packToA4(items, { marginCm, gutterCm, orientation }) {
   });
 
   // Heuristic: place larger items first.
-  normalized.sort((a, b) => (b.wCm * b.hCm) - (a.wCm * a.hCm));
+  normalized.sort((a, b) => b.wCm * b.hCm - a.wCm * a.hCm);
 
   const pages = [];
   let queue = normalized.slice();
@@ -261,7 +283,16 @@ function packToA4(items, { marginCm, gutterCm, orientation }) {
       // Should not happen because we clamped to inner area above, but avoid infinite loop.
       // Force place the first item on its own page (it fits by construction).
       const first = queue[0];
-      pages.push([{ item: first, xCm: 0, yCm: 0, wCm: first.wCm, hCm: first.hCm, rotate90: false }]);
+      pages.push([
+        {
+          item: first,
+          xCm: 0,
+          yCm: 0,
+          wCm: first.wCm,
+          hCm: first.hCm,
+          rotate90: false,
+        },
+      ]);
       queue = queue.slice(1);
       continue;
     }
@@ -303,7 +334,9 @@ async function rasterToPngBytes(file, rotate90) {
     ctx.drawImage(img, 0, 0);
   }
 
-  const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+  const blob = await new Promise((resolve) =>
+    canvas.toBlob(resolve, "image/png"),
+  );
   if (!blob) throw new Error("Failed to encode PNG");
   return new Uint8Array(await blob.arrayBuffer());
 }
@@ -361,7 +394,7 @@ async function exportPdf(state) {
           y: yPt,
           width: wPt,
           height: hPt,
-          borderWidth: 0.5,
+          borderWidth: 0.9,
           borderColor: rgb(0.75, 0.78, 0.82),
           color: undefined,
           opacity: 0.65,
@@ -427,7 +460,9 @@ function setup() {
     // Preview only; PDF export uses real cm units.
     try {
       const saved = Number(localStorage.getItem("ppcm"));
-      const safe = Number.isFinite(saved) ? Math.max(5, Math.min(200, saved)) : 26;
+      const safe = Number.isFinite(saved)
+        ? Math.max(5, Math.min(200, saved))
+        : 26;
       document.documentElement.style.setProperty("--ppcm", String(safe));
     } catch {
       document.documentElement.style.setProperty("--ppcm", "26");
@@ -477,7 +512,10 @@ function setup() {
     stageImg.style.transform = img.rotate90 ? "rotate(90deg)" : "none";
 
     // Visual size in the 18x27cm frame, using calibrated CSS --ppcm scaling.
-    const cssPpcm = Number(getComputedStyle(document.documentElement).getPropertyValue("--ppcm")) || 26;
+    const cssPpcm =
+      Number(
+        getComputedStyle(document.documentElement).getPropertyValue("--ppcm"),
+      ) || 26;
     // When rotated, the bounding box swaps (H×W). Swap CSS size so the rotated box remains W×H.
     const wPx = (img.rotate90 ? img.hCm : img.wCm) * cssPpcm;
     const hPx = (img.rotate90 ? img.wCm : img.hCm) * cssPpcm;
@@ -492,7 +530,10 @@ function setup() {
   }
 
   function go(delta) {
-    const next = Math.max(0, Math.min(state.images.length - 1, state.idx + delta));
+    const next = Math.max(
+      0,
+      Math.min(state.images.length - 1, state.idx + delta),
+    );
     state.idx = next;
     syncControlsFromModel();
     render();
@@ -547,7 +588,9 @@ function setup() {
     showReviewIfAny();
     syncControlsFromModel();
     render();
-    setStatus(`${state.images.length} image(s) loaded. Review sizes, then export.`);
+    setStatus(
+      `${state.images.length} image(s) loaded. Review sizes, then export.`,
+    );
   }
 
   // Drag & drop
@@ -602,7 +645,10 @@ function setup() {
 
   // Keyboard shortcuts (ignore when typing in form fields)
   document.addEventListener("keydown", (e) => {
-    const tag = (document.activeElement && document.activeElement.tagName) ? document.activeElement.tagName.toLowerCase() : "";
+    const tag =
+      document.activeElement && document.activeElement.tagName
+        ? document.activeElement.tagName.toLowerCase()
+        : "";
     const typing = tag === "input" || tag === "textarea" || tag === "select";
     if (typing) return;
     if (state.images.length === 0) return;
