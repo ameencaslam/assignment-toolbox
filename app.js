@@ -394,7 +394,7 @@ async function exportPdf(state) {
           y: yPt,
           width: wPt,
           height: hPt,
-          borderWidth: 0.9,
+          borderWidth: 1.5,
           borderColor: rgb(0.75, 0.78, 0.82),
           color: undefined,
           opacity: 0.65,
