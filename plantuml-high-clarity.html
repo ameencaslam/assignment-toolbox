@@ -65,7 +65,8 @@
       <header class="topbar">
         <div class="topbar__title">PlantUML High Clarity Export</div>
         <div class="topbar__actions">
-          <a class="btn" href="./index.html">Back to packer</a>
+          <a class="btn" href="./index.html">Back to menu</a>
+          <a class="btn" href="./packer.html">Open packer</a>
         </div>
       </header>
 
@@ -78,6 +79,9 @@
             </button>
             <button id="svgBtn" class="btn" type="button">Export SVG</button>
             <button id="pngBtn" class="btn" type="button">Export PNG</button>
+            <button id="folderBtn" class="btn" type="button">
+              Select Download Folder
+            </button>
             <label class="umlScale">
               <span class="setting__label">File name</span>
               <input id="fileName" type="text" value="diagram" />
@@ -129,11 +133,13 @@ WA --> User: Login success
       const renderBtn = document.getElementById("renderBtn");
       const svgBtn = document.getElementById("svgBtn");
       const pngBtn = document.getElementById("pngBtn");
+      const folderBtn = document.getElementById("folderBtn");
       const fileName = document.getElementById("fileName");
       const pngScale = document.getElementById("pngScale");
       const umlInput = document.getElementById("umlInput");
       const preview = document.getElementById("preview");
       const status = document.getElementById("status");
+      let downloadDirHandle = null;
 
       function setStatus(text) {
         status.textContent = text;
@@ -194,6 +200,17 @@ WA --> User: Login success
         setTimeout(() => URL.revokeObjectURL(u), 8000);
       }
 
+      async function saveBlobToSelectedFolder(blob, filename) {
+        if (!downloadDirHandle) return false;
+        const fileHandle = await downloadDirHandle.getFileHandle(filename, {
+          create: true,
+        });
+        const writable = await fileHandle.createWritable();
+        await writable.write(blob);
+        await writable.close();
+        return true;
+      }
+
       function safeBaseFileName() {
         const raw = String(fileName.value || "").trim();
         const cleaned = raw
@@ -223,8 +240,14 @@ WA --> User: Login success
           const encoded = getEncodedDiagram();
           const svgBlob = await fetchBlob(getSvgUrl(encoded));
           const base = safeBaseFileName();
-          downloadBlob(svgBlob, `${base}.svg`);
-          setStatus("SVG downloaded (vector, best clarity).");
+          const filename = `${base}.svg`;
+          const saved = await saveBlobToSelectedFolder(svgBlob, filename);
+          if (saved) {
+            setStatus(`SVG saved to selected folder as ${filename}.`);
+          } else {
+            downloadBlob(svgBlob, filename);
+            setStatus("SVG downloaded (vector, best clarity).");
+          }
         } catch (e) {
           console.error(e);
           setStatus(`SVG export failed: ${e.message || String(e)}`);
@@ -267,8 +290,14 @@ WA --> User: Login success
             canvas.toBlob(resolve, "image/png"),
           );
           if (!blob) throw new Error("Could not create PNG.");
-          downloadBlob(blob, `${base}.png`);
-          setStatus(`PNG downloaded at ${scale}x scale.`);
+          const filename = `${base}.png`;
+          const saved = await saveBlobToSelectedFolder(blob, filename);
+          if (saved) {
+            setStatus(`PNG saved to selected folder as ${filename} (${scale}x).`);
+          } else {
+            downloadBlob(blob, filename);
+            setStatus(`PNG downloaded at ${scale}x scale.`);
+          }
         } catch (e) {
           console.error(e);
           setStatus(`PNG export failed: ${e.message || String(e)}`);
@@ -278,6 +307,27 @@ WA --> User: Login success
       renderBtn.addEventListener("click", renderPreview);
       svgBtn.addEventListener("click", exportSvg);
       pngBtn.addEventListener("click", exportPng);
+      folderBtn.addEventListener("click", async () => {
+        try {
+          if (!window.showDirectoryPicker) {
+            throw new Error("Folder picker is not supported in this browser.");
+          }
+          downloadDirHandle = await window.showDirectoryPicker({
+            mode: "readwrite",
+          });
+          const folderName = downloadDirHandle && downloadDirHandle.name
+            ? downloadDirHandle.name
+            : "selected folder";
+          setStatus(`Download folder selected: ${folderName}`);
+        } catch (e) {
+          if (e && e.name === "AbortError") {
+            setStatus("Folder selection canceled.");
+            return;
+          }
+          console.error(e);
+          setStatus(`Folder selection failed: ${e.message || String(e)}`);
+        }
+      });
 
       // Ctrl/Cmd + Enter for quick render.
       umlInput.addEventListener("keydown", (e) => {

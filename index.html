@@ -3,190 +3,100 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>Snippet Sheet Packer</title>
+    <title>ASG Tools Menu</title>
     <link rel="stylesheet" href="./style.css" />
+    <style>
+      .menuGrid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+        gap: 12px;
+      }
+      .menuCard {
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 14px;
+        background: linear-gradient(
+          180deg,
+          rgba(15, 22, 32, 0.9),
+          rgba(12, 18, 27, 0.86)
+        );
+      }
+      .menuCard__title {
+        font-weight: 700;
+        margin-bottom: 8px;
+      }
+      .menuCard__desc {
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.45;
+        min-height: 58px;
+      }
+      .menuCard__actions {
+        margin-top: 12px;
+      }
+    </style>
   </head>
   <body>
     <div class="app">
       <header class="topbar">
-        <div class="topbar__title">Snippet Sheet Packer</div>
+        <div class="topbar__title">ASG Tools</div>
         <div class="topbar__actions">
-          <a class="btn" href="./plantuml-high-clarity.html"
-            >PlantUML HQ Export</a
-          >
-          <a class="btn" href="./calibrate.html">Calibrate (A4)</a>
-          <label class="btn">
-            <input
-              id="fileInput"
-              type="file"
-              accept="image/*"
-              multiple
-              hidden
-            />
-            Choose images
-          </label>
-          <button id="exportBtn" class="btn btn--primary" disabled>
-            Export A4 PDF
-          </button>
+          <span class="mono">Menu / Guide</span>
         </div>
       </header>
 
-      <main class="main">
-        <section class="panel panel--left">
-          <div class="panel__title">Review (one by one)</div>
-
-          <div id="emptyState" class="empty">
-            <div class="empty__title">
-              Drop images here or click “Choose images”.
-            </div>
-            <div class="empty__hint">
-              No cropping. Aspect ratio locked. Max per snippet: 18×27 cm.
-            </div>
-          </div>
-
-          <div id="review" class="review hidden">
-            <div class="review__nav">
-              <button id="prevBtn" class="btn">Prev</button>
-              <div class="review__counter">
-                <span id="idxLabel">0</span>/<span id="totalLabel">0</span>
+      <main class="main" style="grid-template-columns: 1fr">
+        <section class="panel">
+          <div class="panel__title">Choose a tool</div>
+          <div class="menuGrid">
+            <article class="menuCard">
+              <div class="menuCard__title">Snippet Sheet Packer</div>
+              <div class="menuCard__desc">
+                Load images, set print sizes, and auto-pack them into A4 pages
+                for PDF export.
               </div>
-              <button id="nextBtn" class="btn">Next</button>
-            </div>
-
-            <div class="controls">
-              <div class="controls__row">
-                <div class="control">
-                  <div class="control__label">Target width (cm)</div>
-                  <div class="control__inline">
-                    <button id="wMinus" class="btn btn--small" type="button">
-                      -
-                    </button>
-                    <input
-                      id="widthCm"
-                      type="range"
-                      min="2"
-                      max="18"
-                      step="0.1"
-                      value="12"
-                    />
-                    <button id="wPlus" class="btn btn--small" type="button">
-                      +
-                    </button>
-                  </div>
-                </div>
-
-                <div class="control control--compact">
-                  <div class="control__label">Rotate</div>
-                  <button id="rotateBtn" class="btn btn--small" type="button">
-                    0°/90°
-                  </button>
-                </div>
-
-                <div class="control control--compact">
-                  <div class="control__label">Quick</div>
-                  <button id="resetBtn" class="btn btn--small" type="button">
-                    Reset
-                  </button>
-                  <button
-                    id="applyToNextBtn"
-                    class="btn btn--small"
-                    type="button"
-                  >
-                    Apply to next
-                  </button>
-                </div>
+              <div class="menuCard__actions">
+                <a class="btn btn--primary" href="./packer.html">Open Packer</a>
               </div>
+            </article>
 
-              <div class="controls__row controls__row--meta">
-                <div class="meta">
-                  <div>
-                    <span class="meta__k">Printed size</span>
-                    <span id="printedSizeLabel" class="mono">—</span>
-                  </div>
-                  <div>
-                    <span class="meta__k">Clamped?</span>
-                    <span id="clampedLabel" class="mono">—</span>
-                  </div>
-                  <div>
-                    <span class="meta__k">Auto-rotate on pack</span>
-                    <span class="mono">ON</span>
-                  </div>
-                </div>
+            <article class="menuCard">
+              <div class="menuCard__title">Calibrate (A4)</div>
+              <div class="menuCard__desc">
+                Match on-screen size to a real A4 sheet so cm-based previews are
+                accurate.
               </div>
-            </div>
-
-            <div class="stage">
-              <div class="stage__frame">
-                <div class="frame__label">Max frame (18×27 cm)</div>
-                <div id="frame" class="frame">
-                  <img id="stageImg" alt="" />
-                </div>
+              <div class="menuCard__actions">
+                <a class="btn" href="./calibrate.html">Open Calibrator</a>
               </div>
-            </div>
-          </div>
-        </section>
+            </article>
 
-        <section class="panel panel--right">
-          <div class="panel__title">Packing settings</div>
-          <div class="settings">
-            <div class="setting">
-              <label class="setting__label" for="marginCm"
-                >Page margin (cm)</label
-              >
-              <input
-                id="marginCm"
-                type="number"
-                min="0"
-                max="3"
-                step="0.1"
-                value="0.5"
-              />
-            </div>
-            <div class="setting">
-              <label class="setting__label" for="gutterCm"
-                >Gap between images (cm)</label
-              >
-              <input
-                id="gutterCm"
-                type="number"
-                min="0"
-                max="2"
-                step="0.1"
-                value="0.3"
-              />
-            </div>
-            <div class="setting">
-              <label class="setting__label" for="orientation"
-                >A4 orientation</label
-              >
-              <select id="orientation">
-                <option value="portrait" selected>Portrait</option>
-                <option value="landscape">Landscape</option>
-              </select>
-            </div>
-            <div class="setting">
-              <label class="setting__label" for="borderMode"
-                >Border / cut guide</label
-              >
-              <select id="borderMode">
-                <option value="none">None</option>
-                <option value="hairline" selected>Thin border</option>
-              </select>
-            </div>
-          </div>
-          <div class="panel__footer">
-            <div id="status" class="status">Choose images to begin.</div>
-            <div style="margin-top: 10px">
-              <button id="clearSavedBtn" class="btn btn--small" type="button">
-                Clear saved image settings
-              </button>
-            </div>
+            <article class="menuCard">
+              <div class="menuCard__title">PlantUML HQ Export</div>
+              <div class="menuCard__desc">
+                Render PlantUML and export crisp SVG or high-scale PNG with custom
+                filename and optional folder save.
+              </div>
+              <div class="menuCard__actions">
+                <a class="btn" href="./plantuml-high-clarity.html"
+                  >Open PlantUML Tool</a
+                >
+              </div>
+            </article>
+
+            <article class="menuCard">
+              <div class="menuCard__title">Code Snipper Maker</div>
+              <div class="menuCard__desc">
+                Create monochrome code snippets (white background, black text,
+                gray comments) and export as PNG.
+              </div>
+              <div class="menuCard__actions">
+                <a class="btn" href="./code-snipper-maker.html">Open Snipper</a>
+              </div>
+            </article>
           </div>
         </section>
       </main>
     </div>
-
-    <script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
-    <script src="./app.js"></script>
   </body>
 </html>

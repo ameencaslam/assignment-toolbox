@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Code Snipper Maker</title>
+    <link rel="stylesheet" href="./style.css" />
+    <style>
+      :root {
+        --snippet-font-px: 14px;
+      }
+      @media (max-width: 700px) {
+        :root {
+          --snippet-font-px: 13px;
+        }
+      }
+      .main {
+        grid-template-columns: 1fr 1fr;
+      }
+      @media (max-width: 980px) {
+        .main {
+          grid-template-columns: 1fr;
+        }
+      }
+      .toolbar {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-bottom: 10px;
+      }
+      .field {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .label {
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .toolbar input {
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        padding: 8px 9px;
+        background: rgba(255, 255, 255, 0.03);
+        color: var(--text);
+      }
+      .editor {
+        width: 100%;
+        min-height: 520px;
+        resize: vertical;
+        border: 1px solid #d0d0d0;
+        border-radius: 10px;
+        padding: 12px;
+        font-family:
+          ui-monospace,
+          SFMono-Regular,
+          Menlo,
+          Monaco,
+          Consolas,
+          "Liberation Mono",
+          "Courier New",
+          monospace;
+        font-size: var(--snippet-font-px);
+        line-height: 1.45;
+        color: #000000;
+        background: #fff;
+      }
+      .previewWrap {
+        border: 1px solid #d0d0d0;
+        border-radius: 10px;
+        min-height: 520px;
+        overflow: auto;
+        background: #fff;
+        display: flex;
+        justify-content: flex-start;
+        align-items: flex-start;
+      }
+      #capture {
+        display: inline-block;
+        max-width: 100%;
+        box-sizing: border-box;
+        background: #fff;
+        padding: 18px;
+      }
+      pre {
+        margin: 0;
+        color: #000;
+        background: #fff;
+        font-family:
+          ui-monospace,
+          SFMono-Regular,
+          Menlo,
+          Monaco,
+          Consolas,
+          "Liberation Mono",
+          "Courier New",
+          monospace;
+        font-size: var(--snippet-font-px);
+        line-height: 1.45;
+        white-space: pre;
+        width: max-content;
+      }
+      .comment {
+        color: #808080;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <header class="topbar">
+        <div class="topbar__title">Code Snipper Maker</div>
+        <a class="btn" href="./index.html">Back to menu</a>
+      </header>
+
+      <main class="main">
+        <section class="panel">
+          <div class="panel__title">Input</div>
+          <div class="toolbar">
+            <label class="field">
+              <span class="label">File name</span>
+              <input id="fileName" type="text" value="snippet" />
+            </label>
+            <label class="field">
+              <span class="label">PNG scale</span>
+              <input
+                id="pngScale"
+                type="number"
+                min="1"
+                max="16"
+                step="1"
+                value="4"
+              />
+            </label>
+            <button id="renderBtn" class="btn" type="button">Render</button>
+            <button id="downloadBtn" class="btn" type="button">Export PNG</button>
+          </div>
+          <textarea id="codeInput" class="editor" spellcheck="false">#include &lt;stdio.h&gt;
+
+// this is a comment
+int main() {
+  printf("Hello\n");
+  /* block comment */
+  return 0;
+}</textarea>
+        </section>
+
+        <section class="panel">
+          <div class="panel__title">Preview</div>
+          <div class="previewWrap">
+            <div id="capture">
+              <pre id="previewCode"></pre>
+            </div>
+          </div>
+          <div id="status" class="status">
+            Monochrome snippet: black text, gray comments. Use PNG scale for export
+            sharpness (like PlantUML).
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/html-to-image@1.11.11/dist/html-to-image.min.js"></script>
+    <script>
+      const codeInput = document.getElementById("codeInput");
+      const previewCode = document.getElementById("previewCode");
+      const capture = document.getElementById("capture");
+      const renderBtn = document.getElementById("renderBtn");
+      const downloadBtn = document.getElementById("downloadBtn");
+      const fileName = document.getElementById("fileName");
+      const pngScale = document.getElementById("pngScale");
+      const status = document.getElementById("status");
+
+      function esc(s) {
+        return s
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#39;");
+      }
+
+      function highlightComments(line) {
+        // Gray comments only; everything else remains plain black text.
+        const blockIdx = line.indexOf("/*");
+        const slashIdx = line.indexOf("//");
+        let commentStart = -1;
+        if (blockIdx >= 0 && slashIdx >= 0) commentStart = Math.min(blockIdx, slashIdx);
+        else commentStart = Math.max(blockIdx, slashIdx);
+        if (commentStart < 0) return esc(line);
+        const before = esc(line.slice(0, commentStart));
+        const comment = esc(line.slice(commentStart));
+        return `${before}<span class="comment">${comment}</span>`;
+      }
+
+      function safeBaseFileName() {
+        const raw = String(fileName.value || "").trim();
+        const cleaned = raw
+          .replace(/[<>:"/\\|?*\x00-\x1f]/g, "-")
+          .replace(/\.+$/g, "")
+          .trim();
+        const base = cleaned || "snippet";
+        fileName.value = base;
+        return base;
+      }
+
+      function render() {
+        const code = String(codeInput.value || "");
+        previewCode.innerHTML = code.split("\n").map(highlightComments).join("\n");
+        status.textContent = "Rendered.";
+      }
+
+      async function exportPng() {
+        try {
+          const base = safeBaseFileName();
+          const scale = Math.max(1, Math.min(16, Number(pngScale.value) || 4));
+          pngScale.value = String(scale);
+          const dataUrl = await window.htmlToImage.toPng(capture, {
+            backgroundColor: "#ffffff",
+            pixelRatio: scale,
+            cacheBust: true,
+          });
+          const a = document.createElement("a");
+          a.href = dataUrl;
+          a.download = `${base}.png`;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          status.textContent = `Exported ${base}.png (${scale}x resolution).`;
+        } catch (e) {
+          console.error(e);
+          status.textContent = `Export failed: ${e.message || String(e)}`;
+        }
+      }
+
+      renderBtn.addEventListener("click", render);
+      downloadBtn.addEventListener("click", exportPng);
+      codeInput.addEventListener("input", render);
+      render();
+    </script>
+  </body>
+</html>
