@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>PlantUML High Clarity Export</title>
+    <link rel="stylesheet" href="./style.css" />
+    <style>
+      .umlLayout {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 14px;
+      }
+      .umlEditor {
+        min-height: 520px;
+        width: 100%;
+        resize: vertical;
+        border-radius: 12px;
+        border: 1px solid var(--line);
+        padding: 12px;
+        background: rgba(0, 0, 0, 0.26);
+        color: var(--text);
+        font-family: var(--mono);
+        line-height: 1.4;
+      }
+      .umlPreview {
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        min-height: 520px;
+        background: rgba(0, 0, 0, 0.14);
+        overflow: auto;
+      }
+      .umlPreview img {
+        display: block;
+        margin: 0 auto;
+        max-width: none;
+      }
+      .umlActions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+      .umlScale {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .umlScale input {
+        width: 88px;
+        padding: 9px 10px;
+        border-radius: 10px;
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid var(--line);
+        color: var(--text);
+      }
+      @media (max-width: 980px) {
+        .umlLayout {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <header class="topbar">
+        <div class="topbar__title">PlantUML High Clarity Export</div>
+        <div class="topbar__actions">
+          <a class="btn" href="./index.html">Back to packer</a>
+        </div>
+      </header>
+
+      <main class="main" style="grid-template-columns: 1fr">
+        <section class="panel">
+          <div class="panel__title">Editor and Preview</div>
+          <div class="umlActions" style="margin-bottom: 10px">
+            <button id="renderBtn" class="btn btn--primary" type="button">
+              Render
+            </button>
+            <button id="svgBtn" class="btn" type="button">Export SVG</button>
+            <button id="pngBtn" class="btn" type="button">Export PNG</button>
+            <label class="umlScale">
+              <span class="setting__label">PNG scale</span>
+              <input id="pngScale" type="number" min="1" max="16" step="1" value="4" />
+            </label>
+          </div>
+          <div class="umlLayout">
+            <textarea id="umlInput" class="umlEditor" spellcheck="false">@startuml
+title Authentication flow
+actor User
+participant "Web App" as WA
+participant "API" as API
+database DB
+
+User -> WA: Submit login form
+WA -> API: POST /login
+API -> DB: validate credentials
+DB --> API: valid user
+API --> WA: JWT token
+WA --> User: Login success
+@enduml</textarea>
+            <div id="preview" class="umlPreview"></div>
+          </div>
+          <div class="panel__footer">
+            <div id="status" class="status">
+              Tip: SVG export is always the sharpest. PNG export uses your selected scale.
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/plantuml-encoder@1.4.0/dist/plantuml-encoder.min.js"></script>
+    <script>
+      const SERVER = "https://www.plantuml.com/plantuml";
+      const renderBtn = document.getElementById("renderBtn");
+      const svgBtn = document.getElementById("svgBtn");
+      const pngBtn = document.getElementById("pngBtn");
+      const pngScale = document.getElementById("pngScale");
+      const umlInput = document.getElementById("umlInput");
+      const preview = document.getElementById("preview");
+      const status = document.getElementById("status");
+
+      function setStatus(text) {
+        status.textContent = text;
+      }
+
+      function getEncodedDiagram() {
+        const source = String(umlInput.value || "").trim();
+        if (!source) throw new Error("PlantUML text is empty.");
+        return window.plantumlEncoder.encode(source);
+      }
+
+      function getSvgUrl(encoded) {
+        return `${SERVER}/svg/${encoded}`;
+      }
+
+      function getPngUrl(encoded) {
+        return `${SERVER}/png/${encoded}`;
+      }
+
+      async function fetchText(url) {
+        const r = await fetch(url);
+        if (!r.ok) throw new Error(`Request failed (${r.status})`);
+        return r.text();
+      }
+
+      async function fetchBlob(url) {
+        const r = await fetch(url);
+        if (!r.ok) throw new Error(`Request failed (${r.status})`);
+        return r.blob();
+      }
+
+      function downloadBlob(blob, filename) {
+        const u = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = u;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(u), 8000);
+      }
+
+      async function renderPreview() {
+        try {
+          const encoded = getEncodedDiagram();
+          const svgUrl = getSvgUrl(encoded);
+          const svgText = await fetchText(svgUrl);
+          preview.innerHTML = svgText;
+          setStatus("Rendered successfully.");
+        } catch (e) {
+          console.error(e);
+          setStatus(`Render failed: ${e.message || String(e)}`);
+        }
+      }
+
+      async function exportSvg() {
+        try {
+          const encoded = getEncodedDiagram();
+          const svgBlob = await fetchBlob(getSvgUrl(encoded));
+          downloadBlob(svgBlob, "diagram.svg");
+          setStatus("SVG downloaded (vector, best clarity).");
+        } catch (e) {
+          console.error(e);
+          setStatus(`SVG export failed: ${e.message || String(e)}`);
+        }
+      }
+
+      async function exportPng() {
+        try {
+          const encoded = getEncodedDiagram();
+          const scale = Math.max(1, Math.min(16, Number(pngScale.value) || 4));
+          pngScale.value = String(scale);
+
+          const svgText = await fetchText(getSvgUrl(encoded));
+          const svgBlob = new Blob([svgText], { type: "image/svg+xml;charset=utf-8" });
+          const svgUrl = URL.createObjectURL(svgBlob);
+          const img = new Image();
+
+          await new Promise((resolve, reject) => {
+            img.onload = resolve;
+            img.onerror = reject;
+            img.src = svgUrl;
+          });
+
+          const w = Math.max(1, Math.round(img.width * scale));
+          const h = Math.max(1, Math.round(img.height * scale));
+          const canvas = document.createElement("canvas");
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext("2d");
+          if (!ctx) throw new Error("Canvas is not available.");
+
+          ctx.setTransform(scale, 0, 0, scale, 0, 0);
+          ctx.drawImage(img, 0, 0);
+          URL.revokeObjectURL(svgUrl);
+
+          const blob = await new Promise((resolve) =>
+            canvas.toBlob(resolve, "image/png"),
+          );
+          if (!blob) throw new Error("Could not create PNG.");
+          downloadBlob(blob, `diagram-x${scale}.png`);
+          setStatus(`PNG downloaded at ${scale}x scale.`);
+        } catch (e) {
+          console.error(e);
+          setStatus(`PNG export failed: ${e.message || String(e)}`);
+        }
+      }
+
+      renderBtn.addEventListener("click", renderPreview);
+      svgBtn.addEventListener("click", exportSvg);
+      pngBtn.addEventListener("click", exportPng);
+
+      // Ctrl/Cmd + Enter for quick render.
+      umlInput.addEventListener("keydown", (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+          e.preventDefault();
+          renderPreview();
+        }
+      });
+
+      renderPreview();
+    </script>
+  </body>
+</html>
