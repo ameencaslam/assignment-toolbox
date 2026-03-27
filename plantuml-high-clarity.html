@@ -79,12 +79,24 @@
             <button id="svgBtn" class="btn" type="button">Export SVG</button>
             <button id="pngBtn" class="btn" type="button">Export PNG</button>
             <label class="umlScale">
+              <span class="setting__label">File name</span>
+              <input id="fileName" type="text" value="diagram" />
+            </label>
+            <label class="umlScale">
               <span class="setting__label">PNG scale</span>
-              <input id="pngScale" type="number" min="1" max="16" step="1" value="4" />
+              <input
+                id="pngScale"
+                type="number"
+                min="1"
+                max="16"
+                step="1"
+                value="4"
+              />
             </label>
           </div>
           <div class="umlLayout">
-            <textarea id="umlInput" class="umlEditor" spellcheck="false">@startuml
+            <textarea id="umlInput" class="umlEditor" spellcheck="false">
+@startuml
 title Authentication flow
 actor User
 participant "Web App" as WA
@@ -97,12 +109,14 @@ API -> DB: validate credentials
 DB --> API: valid user
 API --> WA: JWT token
 WA --> User: Login success
-@enduml</textarea>
+@enduml</textarea
+            >
             <div id="preview" class="umlPreview"></div>
           </div>
           <div class="panel__footer">
             <div id="status" class="status">
-              Tip: SVG export is always the sharpest. PNG export uses your selected scale.
+              Tip: SVG export is always the sharpest. PNG export uses your
+              selected scale.
             </div>
           </div>
         </section>
@@ -115,6 +129,7 @@ WA --> User: Login success
       const renderBtn = document.getElementById("renderBtn");
       const svgBtn = document.getElementById("svgBtn");
       const pngBtn = document.getElementById("pngBtn");
+      const fileName = document.getElementById("fileName");
       const pngScale = document.getElementById("pngScale");
       const umlInput = document.getElementById("umlInput");
       const preview = document.getElementById("preview");
@@ -127,7 +142,25 @@ WA --> User: Login success
       function getEncodedDiagram() {
         const source = String(umlInput.value || "").trim();
         if (!source) throw new Error("PlantUML text is empty.");
-        return window.plantumlEncoder.encode(source);
+
+        const hasStart = /^\s*@startuml\b/im.test(source);
+        const hasEnd = /^\s*@enduml\b/im.test(source);
+        if (!hasStart || !hasEnd) {
+          throw new Error("Diagram must include @startuml and @enduml.");
+        }
+
+        // Force a consistent export font across render/SVG/PNG.
+        // "bold" is used as a practical semibold-like fallback in PlantUML.
+        const fontBlock =
+          "\n' injected by local exporter\n" +
+          "skinparam defaultFontName Montserrat\n" +
+          "skinparam defaultFontStyle bold\n";
+
+        const injected = source.replace(
+          /^\s*@startuml\b/i,
+          (m) => `${m}${fontBlock}`,
+        );
+        return window.plantumlEncoder.encode(injected);
       }
 
       function getSvgUrl(encoded) {
@@ -161,6 +194,17 @@ WA --> User: Login success
         setTimeout(() => URL.revokeObjectURL(u), 8000);
       }
 
+      function safeBaseFileName() {
+        const raw = String(fileName.value || "").trim();
+        const cleaned = raw
+          .replace(/[<>:"/\\|?*\x00-\x1f]/g, "-")
+          .replace(/\.+$/g, "")
+          .trim();
+        const base = cleaned || "diagram";
+        fileName.value = base;
+        return base;
+      }
+
       async function renderPreview() {
         try {
           const encoded = getEncodedDiagram();
@@ -178,7 +222,8 @@ WA --> User: Login success
         try {
           const encoded = getEncodedDiagram();
           const svgBlob = await fetchBlob(getSvgUrl(encoded));
-          downloadBlob(svgBlob, "diagram.svg");
+          const base = safeBaseFileName();
+          downloadBlob(svgBlob, `${base}.svg`);
           setStatus("SVG downloaded (vector, best clarity).");
         } catch (e) {
           console.error(e);
@@ -189,11 +234,14 @@ WA --> User: Login success
       async function exportPng() {
         try {
           const encoded = getEncodedDiagram();
+          const base = safeBaseFileName();
           const scale = Math.max(1, Math.min(16, Number(pngScale.value) || 4));
           pngScale.value = String(scale);
 
           const svgText = await fetchText(getSvgUrl(encoded));
-          const svgBlob = new Blob([svgText], { type: "image/svg+xml;charset=utf-8" });
+          const svgBlob = new Blob([svgText], {
+            type: "image/svg+xml;charset=utf-8",
+          });
           const svgUrl = URL.createObjectURL(svgBlob);
           const img = new Image();
 
@@ -219,7 +267,7 @@ WA --> User: Login success
             canvas.toBlob(resolve, "image/png"),
           );
           if (!blob) throw new Error("Could not create PNG.");
-          downloadBlob(blob, `diagram-x${scale}.png`);
+          downloadBlob(blob, `${base}.png`);
           setStatus(`PNG downloaded at ${scale}x scale.`);
         } catch (e) {
           console.error(e);
