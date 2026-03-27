@@ -7,6 +7,7 @@ const A4 = {
 
 const MAX_SNIP = { wCm: 18, hCm: 27 };
 const CM_TO_PT = 72 / 2.54;
+const IMAGE_SETTINGS_KEY = "snippetPacker.imageSettings.v1";
 
 function cmToPt(cm) {
   return cm * CM_TO_PT;
@@ -232,7 +233,9 @@ function packToA4(items, { marginCm, gutterCm, orientation }) {
         yCm: placement.y,
         wCm: Math.max(0, placement.w - gutterCm),
         hCm: Math.max(0, placement.h - gutterCm),
-        rotate90: placement.rotate90,
+        // placement.rotate90 is relative to current item orientation.
+        // Final export rotation must combine manual + auto placement rotation.
+        rotate90: Boolean(item.rotate90) !== Boolean(placement.rotate90),
       });
 
       const used = placeIntoFreeRect(
@@ -419,6 +422,29 @@ function makeId() {
   return Math.random().toString(16).slice(2) + Date.now().toString(16);
 }
 
+function getImageSettingsMap() {
+  try {
+    const raw = localStorage.getItem(IMAGE_SETTINGS_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveImageSettingsMap(map) {
+  try {
+    localStorage.setItem(IMAGE_SETTINGS_KEY, JSON.stringify(map));
+  } catch {
+    // ignore storage failures
+  }
+}
+
+function filePersistKey(file) {
+  return `${file.name}::${file.size}::${file.lastModified}`;
+}
+
 function setup() {
   const fileInput = document.getElementById("fileInput");
   const exportBtn = document.getElementById("exportBtn");
@@ -445,6 +471,7 @@ function setup() {
   const orientation = document.getElementById("orientation");
   const borderMode = document.getElementById("borderMode");
   const status = document.getElementById("status");
+  const clearSavedBtn = document.getElementById("clearSavedBtn");
 
   const state = {
     images: [],
@@ -454,7 +481,26 @@ function setup() {
     gutterCm,
     orientation,
     borderMode,
+    imageSettings: getImageSettingsMap(),
   };
+
+  function persistImageSetting(img) {
+    if (!img || !img.persistKey) return;
+    state.imageSettings[img.persistKey] = {
+      wCm: img.wCm,
+      rotate90: img.rotate90,
+    };
+    saveImageSettingsMap(state.imageSettings);
+  }
+
+  function clearSavedImageSettings() {
+    state.imageSettings = {};
+    try {
+      localStorage.removeItem(IMAGE_SETTINGS_KEY);
+    } catch {
+      // ignore storage failures
+    }
+  }
 
   function applySavedCalibration() {
     // Preview only; PDF export uses real cm units.
@@ -492,6 +538,7 @@ function setup() {
     img.wCm = dims.wCm;
     img.hCm = dims.hCm;
     img.clamped = dims.clamped;
+    persistImageSetting(img);
     render();
   }
 
@@ -567,6 +614,7 @@ function setup() {
       const img = {
         id: makeId(),
         file,
+        persistKey: filePersistKey(file),
         dataUrl,
         name: file.name,
         wPx,
@@ -580,6 +628,17 @@ function setup() {
       img.wCm = dims.wCm;
       img.hCm = dims.hCm;
       img.clamped = dims.clamped;
+
+      // Restore saved settings for previously-seen files.
+      const saved = state.imageSettings[img.persistKey];
+      if (saved && typeof saved.wCm === "number") {
+        img.rotate90 = Boolean(saved.rotate90);
+        const restoredW = Math.min(MAX_SNIP.wCm, Math.max(2, Number(saved.wCm)));
+        const restored = getDimsForWidth(img, img.rotate90, restoredW);
+        img.wCm = restored.wCm;
+        img.hCm = restored.hCm;
+        img.clamped = restored.clamped;
+      }
       added.push(img);
     }
 
@@ -605,6 +664,15 @@ function setup() {
   fileInput.addEventListener("change", () => {
     if (fileInput.files?.length) addFiles(fileInput.files);
     fileInput.value = "";
+  });
+
+  clearSavedBtn.addEventListener("click", () => {
+    const ok = window.confirm(
+      "Clear all saved per-image size/rotation settings?",
+    );
+    if (!ok) return;
+    clearSavedImageSettings();
+    setStatus("Saved image settings cleared.");
   });
 
   applySavedCalibration();
@@ -638,6 +706,7 @@ function setup() {
       nxt.wCm = dims.wCm;
       nxt.hCm = dims.hCm;
       nxt.clamped = dims.clamped;
+      persistImageSetting(nxt);
     }
     go(1);
   });
