@@ -58,6 +58,43 @@
           grid-template-columns: 1fr;
         }
       }
+
+      .statusDetails {
+        margin-top: 10px;
+        white-space: pre-wrap;
+        word-break: break-word;
+        font-family: var(--mono);
+        color: rgba(230, 237, 246, 0.92);
+        background: rgba(255, 93, 143, 0.08);
+        border: 1px solid rgba(255, 93, 143, 0.25);
+        padding: 10px 12px;
+        border-radius: 10px;
+        max-height: 220px;
+        overflow: auto;
+      }
+
+      .umlErrorBox {
+        padding: 18px;
+        color: rgba(230, 237, 246, 0.95);
+      }
+
+      .umlErrorBox__title {
+        font-weight: 700;
+        margin-bottom: 10px;
+      }
+
+      .umlErrorBox__pre {
+        font-family: var(--mono);
+        white-space: pre-wrap;
+        word-break: break-word;
+        background: rgba(255, 93, 143, 0.08);
+        border: 1px solid rgba(255, 93, 143, 0.25);
+        padding: 10px 12px;
+        border-radius: 10px;
+        margin: 0;
+        max-height: 520px;
+        overflow: auto;
+      }
     </style>
   </head>
   <body>
@@ -141,13 +178,77 @@ WA --> User: Login success
       const status = document.getElementById("status");
       let downloadDirHandle = null;
 
-      function setStatus(text) {
-        status.textContent = text;
+      function setStatus(summary, details) {
+        status.innerHTML = "";
+        const summaryEl = document.createElement("div");
+        summaryEl.textContent = summary;
+        status.appendChild(summaryEl);
+
+        if (details) {
+          const pre = document.createElement("pre");
+          pre.className = "statusDetails";
+          pre.textContent = details;
+          status.appendChild(pre);
+        }
+      }
+
+      function escapeHtml(str) {
+        return String(str)
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;")
+          .replaceAll("'", "&#039;");
+      }
+
+      function safeSlice(text, maxChars) {
+        const s = String(text ?? "");
+        if (s.length <= maxChars) return s;
+        return s.slice(0, maxChars) + "\n...[truncated]";
+      }
+
+      function stringifyErrorDetails(err) {
+        if (err == null) return "Unknown error (null/undefined).";
+        if (typeof err === "string") return err;
+
+        if (err instanceof Error) {
+          const parts = [];
+          parts.push(`Name: ${err.name || "Error"}`);
+          parts.push(`Message: ${err.message || "(empty message)"}`);
+          if (err.url) parts.push(`URL: ${err.url}`);
+          if (err.http) {
+            const { status, statusText, body } = err.http;
+            parts.push(`HTTP: ${status} ${statusText || ""}`.trim());
+            if (body) parts.push(`HTTP body:\n${safeSlice(body, 4000)}`);
+          }
+          if (err.snippet) parts.push(`Response snippet:\n${safeSlice(err.snippet, 2000)}`);
+          if (err.stack) parts.push(`Stack:\n${err.stack}`);
+          if (err.cause) {
+            parts.push(`Cause:\n${stringifyErrorDetails(err.cause)}`);
+          }
+          return parts.join("\n");
+        }
+
+        try {
+          return `Thrown value: ${JSON.stringify(err, null, 2)}`;
+        } catch {
+          return `Thrown value (unserializable): ${String(err)}`;
+        }
       }
 
       function getEncodedDiagram() {
         const source = String(umlInput.value || "").trim();
-        if (!source) throw new Error("PlantUML text is empty.");
+        if (!source) {
+          throw new Error(
+            "PlantUML text is empty. Paste a diagram that includes @startuml ... @enduml.",
+          );
+        }
+
+        if (!window.plantumlEncoder || !window.plantumlEncoder.encode) {
+          throw new Error(
+            "PlantUML encoder failed to load (plantuml-encoder). Check network connectivity to cdn.jsdelivr.net.",
+          );
+        }
 
         const hasStart = /^\s*@startuml\b/im.test(source);
         const hasEnd = /^\s*@enduml\b/im.test(source);
@@ -166,7 +267,13 @@ WA --> User: Login success
           /^\s*@startuml\b/i,
           (m) => `${m}${fontBlock}`,
         );
-        return window.plantumlEncoder.encode(injected);
+        try {
+          return window.plantumlEncoder.encode(injected);
+        } catch (e) {
+          const err = new Error("Failed to encode PlantUML.");
+          err.cause = e;
+          throw err;
+        }
       }
 
       function getSvgUrl(encoded) {
@@ -177,16 +284,43 @@ WA --> User: Login success
         return `${SERVER}/png/${encoded}`;
       }
 
-      async function fetchText(url) {
-        const r = await fetch(url);
-        if (!r.ok) throw new Error(`Request failed (${r.status})`);
-        return r.text();
+      async function safeReadResponseText(response, maxChars) {
+        try {
+          const t = await response.text();
+          return safeSlice(t, maxChars);
+        } catch {
+          return "";
+        }
       }
 
-      async function fetchBlob(url) {
-        const r = await fetch(url);
-        if (!r.ok) throw new Error(`Request failed (${r.status})`);
-        return r.blob();
+      async function fetchText(url) {
+        let r;
+        try {
+          r = await fetch(url);
+        } catch (e) {
+          const err = new Error(
+            `Network request failed while fetching PlantUML (${url}).`,
+          );
+          err.cause = e;
+          err.url = url;
+          throw err;
+        }
+
+        if (!r.ok) {
+          const body = await safeReadResponseText(r, 8000);
+          const err = new Error(
+            `Request failed (${r.status} ${r.statusText || "Unknown status"}).`,
+          );
+          err.url = url;
+          err.http = {
+            status: r.status,
+            statusText: r.statusText || "",
+            body,
+          };
+          throw err;
+        }
+
+        return r.text();
       }
 
       function downloadBlob(blob, filename) {
@@ -222,23 +356,55 @@ WA --> User: Login success
         return base;
       }
 
+      function assertLooksLikeSvg(svgText, context) {
+        if (!/<svg\b/i.test(svgText)) {
+          const err = new Error(
+            `Unexpected response from PlantUML (not SVG).${context ? " " + context : ""}`,
+          );
+          err.snippet = safeSlice(svgText, 2000);
+          throw err;
+        }
+      }
+
+      function renderErrorInPreview(err) {
+        const details = stringifyErrorDetails(err);
+        const safe = escapeHtml(details);
+        preview.innerHTML = `
+          <div class="umlErrorBox">
+            <div class="umlErrorBox__title">Error</div>
+            <pre class="umlErrorBox__pre">${safe}</pre>
+          </div>
+        `;
+      }
+
       async function renderPreview() {
         try {
           const encoded = getEncodedDiagram();
           const svgUrl = getSvgUrl(encoded);
           const svgText = await fetchText(svgUrl);
+          assertLooksLikeSvg(svgText, "during preview render");
           preview.innerHTML = svgText;
           setStatus("Rendered successfully.");
         } catch (e) {
           console.error(e);
-          setStatus(`Render failed: ${e.message || String(e)}`);
+          renderErrorInPreview(e);
+          const details = stringifyErrorDetails(e);
+          const summary =
+            e && typeof e === "object" && "message" in e && e.message
+              ? `Render failed: ${e.message}`
+              : `Render failed.`;
+          setStatus(summary, details);
         }
       }
 
       async function exportSvg() {
         try {
           const encoded = getEncodedDiagram();
-          const svgBlob = await fetchBlob(getSvgUrl(encoded));
+          const svgText = await fetchText(getSvgUrl(encoded));
+          assertLooksLikeSvg(svgText, "during SVG export");
+          const svgBlob = new Blob([svgText], {
+            type: "image/svg+xml;charset=utf-8",
+          });
           const base = safeBaseFileName();
           const filename = `${base}.svg`;
           const saved = await saveBlobToSelectedFolder(svgBlob, filename);
@@ -250,7 +416,13 @@ WA --> User: Login success
           }
         } catch (e) {
           console.error(e);
-          setStatus(`SVG export failed: ${e.message || String(e)}`);
+          renderErrorInPreview(e);
+          const details = stringifyErrorDetails(e);
+          const summary =
+            e && typeof e === "object" && "message" in e && e.message
+              ? `SVG export failed: ${e.message}`
+              : `SVG export failed.`;
+          setStatus(summary, details);
         }
       }
 
@@ -262,6 +434,7 @@ WA --> User: Login success
           pngScale.value = String(scale);
 
           const svgText = await fetchText(getSvgUrl(encoded));
+          assertLooksLikeSvg(svgText, "during PNG export");
           const svgBlob = new Blob([svgText], {
             type: "image/svg+xml;charset=utf-8",
           });
@@ -270,7 +443,14 @@ WA --> User: Login success
 
           await new Promise((resolve, reject) => {
             img.onload = resolve;
-            img.onerror = reject;
+            img.onerror = (evt) => {
+              const err = new Error(
+                "Failed to rasterize SVG to PNG (image load error).",
+              );
+              err.snippet = safeSlice(svgText, 2000);
+              err.cause = evt;
+              reject(err);
+            };
             img.src = svgUrl;
           });
 
@@ -293,14 +473,22 @@ WA --> User: Login success
           const filename = `${base}.png`;
           const saved = await saveBlobToSelectedFolder(blob, filename);
           if (saved) {
-            setStatus(`PNG saved to selected folder as ${filename} (${scale}x).`);
+            setStatus(
+              `PNG saved to selected folder as ${filename} (${scale}x).`,
+            );
           } else {
             downloadBlob(blob, filename);
             setStatus(`PNG downloaded at ${scale}x scale.`);
           }
         } catch (e) {
           console.error(e);
-          setStatus(`PNG export failed: ${e.message || String(e)}`);
+          renderErrorInPreview(e);
+          const details = stringifyErrorDetails(e);
+          const summary =
+            e && typeof e === "object" && "message" in e && e.message
+              ? `PNG export failed: ${e.message}`
+              : `PNG export failed.`;
+          setStatus(summary, details);
         }
       }
 
@@ -315,9 +503,10 @@ WA --> User: Login success
           downloadDirHandle = await window.showDirectoryPicker({
             mode: "readwrite",
           });
-          const folderName = downloadDirHandle && downloadDirHandle.name
-            ? downloadDirHandle.name
-            : "selected folder";
+          const folderName =
+            downloadDirHandle && downloadDirHandle.name
+              ? downloadDirHandle.name
+              : "selected folder";
           setStatus(`Download folder selected: ${folderName}`);
         } catch (e) {
           if (e && e.name === "AbortError") {
@@ -325,7 +514,12 @@ WA --> User: Login success
             return;
           }
           console.error(e);
-          setStatus(`Folder selection failed: ${e.message || String(e)}`);
+          const details = stringifyErrorDetails(e);
+          const summary =
+            e && typeof e === "object" && "message" in e && e.message
+              ? `Folder selection failed: ${e.message}`
+              : `Folder selection failed.`;
+          setStatus(summary, details);
         }
       });
 
