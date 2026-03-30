@@ -20,3 +20,5 @@ This repo is a small browser-only toolset (no build step). You can open it direc
 - **PlantUML HQ Export** (`plantuml-high-clarity.html`): exports `*.svg` (best clarity) and `*.png` (scaled).
 - **Code Snipper Maker** (`code-snipper-maker.html`): exports `*.png`.
 
+### You can use it here
+https://ameencaslam.github.io/assignment-toolbox/
