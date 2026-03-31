@@ -3,15 +3,15 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>PlantUML High Clarity Export</title>
+    <title>Graphviz High Clarity Export</title>
     <link rel="stylesheet" href="./style.css" />
     <style>
-      .umlLayout {
+      .gvLayout {
         display: grid;
         grid-template-columns: 1fr 1fr;
         gap: 14px;
       }
-      .umlEditor {
+      .gvEditor {
         min-height: 520px;
         width: 100%;
         resize: vertical;
@@ -23,38 +23,43 @@
         font-family: var(--mono);
         line-height: 1.4;
       }
-      .umlPreview {
+      .gvPreview {
         border: 1px solid var(--line);
         border-radius: 12px;
         min-height: 520px;
         background: rgba(0, 0, 0, 0.14);
         overflow: auto;
       }
-      .umlPreview img {
+      .gvPreview svg {
         display: block;
         margin: 0 auto;
         max-width: none;
       }
-      .umlActions {
+      .gvActions {
         display: flex;
         flex-wrap: wrap;
         gap: 10px;
       }
-      .umlScale {
+      .gvControl {
         display: inline-flex;
         align-items: center;
         gap: 8px;
       }
-      .umlScale input {
-        width: 88px;
+      .gvControl input,
+      .gvControl select {
+        width: 160px;
         padding: 9px 10px;
         border-radius: 10px;
         background: rgba(255, 255, 255, 0.03);
         border: 1px solid var(--line);
         color: var(--text);
       }
+      .gvControl--small input {
+        width: 88px;
+      }
+
       @media (max-width: 980px) {
-        .umlLayout {
+        .gvLayout {
           grid-template-columns: 1fr;
         }
       }
@@ -73,17 +78,15 @@
         overflow: auto;
       }
 
-      .umlErrorBox {
+      .gvErrorBox {
         padding: 18px;
         color: rgba(230, 237, 246, 0.95);
       }
-
-      .umlErrorBox__title {
+      .gvErrorBox__title {
         font-weight: 700;
         margin-bottom: 10px;
       }
-
-      .umlErrorBox__pre {
+      .gvErrorBox__pre {
         font-family: var(--mono);
         white-space: pre-wrap;
         word-break: break-word;
@@ -100,7 +103,7 @@
   <body>
     <div class="app">
       <header class="topbar">
-        <div class="topbar__title">PlantUML High Clarity Export</div>
+        <div class="topbar__title">Graphviz High Clarity Export</div>
         <div class="topbar__actions">
           <a class="btn" href="./index.html">Back to menu</a>
           <a class="btn" href="./packer.html">Open packer</a>
@@ -110,7 +113,7 @@
       <main class="main" style="grid-template-columns: 1fr">
         <section class="panel">
           <div class="panel__title">Editor and Preview</div>
-          <div class="umlActions" style="margin-bottom: 10px">
+          <div class="gvActions" style="margin-bottom: 10px">
             <button id="renderBtn" class="btn btn--primary" type="button">
               Render
             </button>
@@ -119,11 +122,11 @@
             <button id="folderBtn" class="btn" type="button">
               Select Download Folder
             </button>
-            <label class="umlScale">
+            <label class="gvControl">
               <span class="setting__label">File name</span>
-              <input id="fileName" type="text" value="diagram" />
+              <input id="fileName" type="text" value="graph" />
             </label>
-            <label class="umlScale">
+            <label class="gvControl gvControl--small">
               <span class="setting__label">PNG scale</span>
               <input
                 id="pngScale"
@@ -134,25 +137,33 @@
                 value="4"
               />
             </label>
+            <label class="gvControl">
+              <span class="setting__label">Engine</span>
+              <select id="engine">
+                <option value="dot" selected>dot</option>
+                <option value="neato">neato</option>
+                <option value="fdp">fdp</option>
+                <option value="sfdp">sfdp</option>
+                <option value="twopi">twopi</option>
+                <option value="circo">circo</option>
+              </select>
+            </label>
           </div>
-          <div class="umlLayout">
-            <textarea id="umlInput" class="umlEditor" spellcheck="false">
-@startuml
-title Authentication flow
-actor User
-participant "Web App" as WA
-participant "API" as API
-database DB
+          <div class="gvLayout">
+            <textarea id="dotInput" class="gvEditor" spellcheck="false">
+digraph G {
+  rankdir=LR;
+  node [shape=box, fontname="Montserrat", style="rounded,filled", fillcolor="#0f1620", color="#4cc9f0", fontcolor="#e6edf6"];
+  edge [color="#80ffdb", fontname="Montserrat", fontcolor="#9bb0c7"];
 
-User -> WA: Submit login form
-WA -> API: POST /login
-API -> DB: validate credentials
-DB --> API: valid user
-API --> WA: JWT token
-WA --> User: Login success
-@enduml</textarea
+  User -> "Web App" [label="login"];
+  "Web App" -> API [label="POST /login"];
+  API -> DB [label="validate"];
+  DB -> API [label="ok"];
+  API -> "Web App" [label="JWT"];
+}</textarea
             >
-            <div id="preview" class="umlPreview"></div>
+            <div id="preview" class="gvPreview"></div>
           </div>
           <div class="panel__footer">
             <div id="status" class="status">
@@ -164,26 +175,27 @@ WA --> User: Login success
       </main>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/plantuml-encoder@1.4.0/dist/plantuml-encoder.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/viz.js@2.1.2/viz.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/viz.js@2.1.2/full.render.js"></script>
     <script>
-      const SERVER = "https://www.plantuml.com/plantuml";
       const renderBtn = document.getElementById("renderBtn");
       const svgBtn = document.getElementById("svgBtn");
       const pngBtn = document.getElementById("pngBtn");
       const folderBtn = document.getElementById("folderBtn");
       const fileName = document.getElementById("fileName");
       const pngScale = document.getElementById("pngScale");
-      const umlInput = document.getElementById("umlInput");
+      const engine = document.getElementById("engine");
+      const dotInput = document.getElementById("dotInput");
       const preview = document.getElementById("preview");
       const status = document.getElementById("status");
       let downloadDirHandle = null;
+      let viz = null;
 
       function setStatus(summary, details) {
         status.innerHTML = "";
         const summaryEl = document.createElement("div");
         summaryEl.textContent = summary;
         status.appendChild(summaryEl);
-
         if (details) {
           const pre = document.createElement("pre");
           pre.className = "statusDetails";
@@ -210,25 +222,14 @@ WA --> User: Login success
       function stringifyErrorDetails(err) {
         if (err == null) return "Unknown error (null/undefined).";
         if (typeof err === "string") return err;
-
         if (err instanceof Error) {
           const parts = [];
           parts.push(`Name: ${err.name || "Error"}`);
           parts.push(`Message: ${err.message || "(empty message)"}`);
-          if (err.url) parts.push(`URL: ${err.url}`);
-          if (err.http) {
-            const { status, statusText, body } = err.http;
-            parts.push(`HTTP: ${status} ${statusText || ""}`.trim());
-            if (body) parts.push(`HTTP body:\n${safeSlice(body, 4000)}`);
-          }
-          if (err.snippet) parts.push(`Response snippet:\n${safeSlice(err.snippet, 2000)}`);
           if (err.stack) parts.push(`Stack:\n${err.stack}`);
-          if (err.cause) {
-            parts.push(`Cause:\n${stringifyErrorDetails(err.cause)}`);
-          }
+          if (err.cause) parts.push(`Cause:\n${stringifyErrorDetails(err.cause)}`);
           return parts.join("\n");
         }
-
         try {
           return `Thrown value: ${JSON.stringify(err, null, 2)}`;
         } catch {
@@ -236,91 +237,25 @@ WA --> User: Login success
         }
       }
 
-      function getEncodedDiagram() {
-        const source = String(umlInput.value || "").trim();
-        if (!source) {
+      function ensureVizReady() {
+        if (viz) return;
+        if (!window.Viz) {
           throw new Error(
-            "PlantUML text is empty. Paste a diagram that includes @startuml ... @enduml.",
+            "Graphviz renderer failed to load (viz.js). Check network connectivity to cdn.jsdelivr.net.",
           );
         }
-
-        if (!window.plantumlEncoder || !window.plantumlEncoder.encode) {
-          throw new Error(
-            "PlantUML encoder failed to load (plantuml-encoder). Check network connectivity to cdn.jsdelivr.net.",
-          );
-        }
-
-        const hasStart = /^\s*@startuml\b/im.test(source);
-        const hasEnd = /^\s*@enduml\b/im.test(source);
-        if (!hasStart || !hasEnd) {
-          throw new Error("Diagram must include @startuml and @enduml.");
-        }
-
-        // Force a consistent export font across render/SVG/PNG.
-        // "bold" is used as a practical semibold-like fallback in PlantUML.
-        const fontBlock =
-          "\n' injected by local exporter\n" +
-          "skinparam defaultFontName Montserrat\n" +
-          "skinparam defaultFontStyle bold\n";
-
-        const injected = source.replace(
-          /^\s*@startuml\b/i,
-          (m) => `${m}${fontBlock}`,
-        );
-        try {
-          return window.plantumlEncoder.encode(injected);
-        } catch (e) {
-          const err = new Error("Failed to encode PlantUML.");
-          err.cause = e;
-          throw err;
-        }
+        viz = new window.Viz({ workerURL: undefined });
       }
 
-      function getSvgUrl(encoded) {
-        return `${SERVER}/svg/${encoded}`;
-      }
-
-      function getPngUrl(encoded) {
-        return `${SERVER}/png/${encoded}`;
-      }
-
-      async function safeReadResponseText(response, maxChars) {
-        try {
-          const t = await response.text();
-          return safeSlice(t, maxChars);
-        } catch {
-          return "";
-        }
-      }
-
-      async function fetchText(url) {
-        let r;
-        try {
-          r = await fetch(url);
-        } catch (e) {
-          const err = new Error(
-            `Network request failed while fetching PlantUML (${url}).`,
-          );
-          err.cause = e;
-          err.url = url;
-          throw err;
-        }
-
-        if (!r.ok) {
-          const body = await safeReadResponseText(r, 8000);
-          const err = new Error(
-            `Request failed (${r.status} ${r.statusText || "Unknown status"}).`,
-          );
-          err.url = url;
-          err.http = {
-            status: r.status,
-            statusText: r.statusText || "",
-            body,
-          };
-          throw err;
-        }
-
-        return r.text();
+      function safeBaseFileName() {
+        const raw = String(fileName.value || "").trim();
+        const cleaned = raw
+          .replace(/[<>:"/\\|?*\x00-\x1f]/g, "-")
+          .replace(/\.+$/g, "")
+          .trim();
+        const base = cleaned || "graph";
+        fileName.value = base;
+        return base;
       }
 
       function downloadBlob(blob, filename) {
@@ -345,21 +280,10 @@ WA --> User: Login success
         return true;
       }
 
-      function safeBaseFileName() {
-        const raw = String(fileName.value || "").trim();
-        const cleaned = raw
-          .replace(/[<>:"/\\|?*\x00-\x1f]/g, "-")
-          .replace(/\.+$/g, "")
-          .trim();
-        const base = cleaned || "diagram";
-        fileName.value = base;
-        return base;
-      }
-
       function assertLooksLikeSvg(svgText, context) {
         if (!/<svg\b/i.test(svgText)) {
           const err = new Error(
-            `Unexpected response from PlantUML (not SVG).${context ? " " + context : ""}`,
+            `Unexpected output from Graphviz (not SVG).${context ? " " + context : ""}`,
           );
           err.snippet = safeSlice(svgText, 2000);
           throw err;
@@ -370,19 +294,37 @@ WA --> User: Login success
         const details = stringifyErrorDetails(err);
         const safe = escapeHtml(details);
         preview.innerHTML = `
-          <div class="umlErrorBox">
-            <div class="umlErrorBox__title">Error</div>
-            <pre class="umlErrorBox__pre">${safe}</pre>
+          <div class="gvErrorBox">
+            <div class="gvErrorBox__title">Error</div>
+            <pre class="gvErrorBox__pre">${safe}</pre>
           </div>
         `;
       }
 
+      async function renderToSvgText() {
+        const src = String(dotInput.value || "").trim();
+        if (!src) throw new Error("DOT text is empty.");
+        ensureVizReady();
+        const eng = String(engine.value || "dot");
+        try {
+          const svgText = await viz.renderString(src, {
+            format: "svg",
+            engine: eng,
+          });
+          assertLooksLikeSvg(svgText, "");
+          return svgText;
+        } catch (e) {
+          // viz.js can become unusable after a render error; recreate it.
+          viz = null;
+          const err = new Error("Failed to render Graphviz.");
+          err.cause = e;
+          throw err;
+        }
+      }
+
       async function renderPreview() {
         try {
-          const encoded = getEncodedDiagram();
-          const svgUrl = getSvgUrl(encoded);
-          const svgText = await fetchText(svgUrl);
-          assertLooksLikeSvg(svgText, "during preview render");
+          const svgText = await renderToSvgText();
           preview.innerHTML = svgText;
           setStatus("Rendered successfully.");
         } catch (e) {
@@ -399,18 +341,15 @@ WA --> User: Login success
 
       async function exportSvg() {
         try {
-          const encoded = getEncodedDiagram();
-          const svgText = await fetchText(getSvgUrl(encoded));
-          assertLooksLikeSvg(svgText, "during SVG export");
+          const svgText = await renderToSvgText();
           const svgBlob = new Blob([svgText], {
             type: "image/svg+xml;charset=utf-8",
           });
           const base = safeBaseFileName();
           const filename = `${base}.svg`;
           const saved = await saveBlobToSelectedFolder(svgBlob, filename);
-          if (saved) {
-            setStatus(`SVG saved to selected folder as ${filename}.`);
-          } else {
+          if (saved) setStatus(`SVG saved to selected folder as ${filename}.`);
+          else {
             downloadBlob(svgBlob, filename);
             setStatus("SVG downloaded (vector, best clarity).");
           }
@@ -428,13 +367,11 @@ WA --> User: Login success
 
       async function exportPng() {
         try {
-          const encoded = getEncodedDiagram();
           const base = safeBaseFileName();
           const scale = Math.max(1, Math.min(16, Number(pngScale.value) || 4));
           pngScale.value = String(scale);
 
-          const svgText = await fetchText(getSvgUrl(encoded));
-          assertLooksLikeSvg(svgText, "during PNG export");
+          const svgText = await renderToSvgText();
           const svgBlob = new Blob([svgText], {
             type: "image/svg+xml;charset=utf-8",
           });
@@ -473,9 +410,7 @@ WA --> User: Login success
           const filename = `${base}.png`;
           const saved = await saveBlobToSelectedFolder(blob, filename);
           if (saved) {
-            setStatus(
-              `PNG saved to selected folder as ${filename} (${scale}x).`,
-            );
+            setStatus(`PNG saved to selected folder as ${filename} (${scale}x).`);
           } else {
             downloadBlob(blob, filename);
             setStatus(`PNG downloaded at ${scale}x scale.`);
@@ -535,7 +470,7 @@ WA --> User: Login success
       });
 
       // Ctrl/Cmd + Enter for quick render.
-      umlInput.addEventListener("keydown", (e) => {
+      dotInput.addEventListener("keydown", (e) => {
         if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
           e.preventDefault();
           renderPreview();
@@ -546,3 +481,4 @@ WA --> User: Login success
     </script>
   </body>
 </html>
+
