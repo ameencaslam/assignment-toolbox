@@ -207,6 +207,161 @@ WA --> User: Login success
         return s.slice(0, maxChars) + "\n...[truncated]";
       }
 
+      function stripHtmlToText(html) {
+        const raw = String(html ?? "");
+        if (!raw.trim()) return "";
+        try {
+          const doc = new DOMParser().parseFromString(raw, "text/html");
+          const t =
+            doc.body?.innerText ||
+            doc.documentElement?.textContent ||
+            "";
+          return t.replace(/\s+/g, " ").trim();
+        } catch {
+          return raw
+            .replace(/<[^>]+>/g, " ")
+            .replace(/\s+/g, " ")
+            .trim();
+        }
+      }
+
+      /** PlantUML returns HTTP 4xx with an SVG "error diagram"; pull readable lines from <text> nodes. */
+      function extractPlantUmlErrorSummaryFromSvg(svgText) {
+        const raw = String(svgText ?? "");
+        if (!/<svg\b/i.test(raw)) return "";
+
+        let doc;
+        try {
+          doc = new DOMParser().parseFromString(raw, "image/svg+xml");
+          const pe = doc.querySelector("parsererror");
+          if (pe && pe.textContent?.trim()) {
+            return pe.textContent.trim().slice(0, 800);
+          }
+        } catch {
+          return "";
+        }
+
+        const textEls = Array.from(doc.querySelectorAll("text"));
+        const texts = textEls
+          .map((el) => (el.textContent || "").replace(/\s+/g, " ").trim())
+          .filter((t) => t && t !== "\u00a0");
+
+        const blob = texts.join(" ");
+
+        const patterns = [
+          /syntax error[^\n.]{0,500}/i,
+          /Syntax Error[^\n.]{0,500}/i,
+          /cannot find[^\n.]{0,400}/i,
+          /Unexpected [^\n.]{0,400}/i,
+          /Expecting [^\n.]{0,400}/i,
+          /Invalid [^\n.]{0,400}/i,
+          /It seems that you[^\n]{0,500}/i,
+          /No diagram found[^\n.]{0,400}/i,
+          /\[From string \(line \d+\)[^\]]*\][^.]{0,600}/i,
+        ];
+        for (const re of patterns) {
+          const m = blob.match(re);
+          if (m) return m[0].trim().slice(0, 900);
+        }
+
+        const redTexts = textEls
+          .filter((el) => {
+            const fill = (el.getAttribute("fill") || "").toLowerCase();
+            return (
+              fill === "#ff0000" ||
+              fill === "#f00" ||
+              fill === "red" ||
+              /^#f{1,2}0{4,6}$/i.test(fill)
+            );
+          })
+          .map((el) => el.textContent.trim())
+          .filter(Boolean);
+        if (redTexts.length) {
+          return redTexts.join(" — ").slice(0, 900);
+        }
+
+        const lineRef = blob.match(/\[From string \(line (\d+)\)\s*\]/i);
+        if (lineRef) {
+          const n = lineRef[1];
+          const idx = texts.findIndex((t) =>
+            /\[From string \(line \d+\)/i.test(t),
+          );
+          if (idx >= 0) {
+            const tail = texts.slice(idx, idx + 12).join(" | ");
+            return `Source line ${n}. ${tail.slice(0, 850)}${tail.length > 850 ? "…" : ""}`;
+          }
+          return `PlantUML points to source line ${n} (see preview diagram).`;
+        }
+
+        return blob.replace(/\s+/g, " ").trim().slice(0, 700);
+      }
+
+      function httpStatusLabel(status, statusText) {
+        const st = String(statusText ?? "").trim();
+        if (st) return st;
+        const fb = {
+          400: "Bad Request",
+          401: "Unauthorized",
+          403: "Forbidden",
+          404: "Not Found",
+          429: "Too Many Requests",
+          500: "Internal Server Error",
+          502: "Bad Gateway",
+          503: "Service Unavailable",
+        };
+        return fb[status] || "";
+      }
+
+      function shortenUrlForDisplay(url) {
+        const s = String(url ?? "");
+        if (s.length <= 120) return s;
+        try {
+          const u = new URL(s);
+          const enc = u.pathname.split("/").pop() || "";
+          const head = `${u.origin}${u.pathname.slice(0, u.pathname.lastIndexOf("/") + 1)}`;
+          return `${head}${enc.slice(0, 40)}…${enc.length > 40 ? ` (${enc.length} chars)` : ""}`;
+        } catch {
+          return s.slice(0, 120) + "…";
+        }
+      }
+
+      function responseLooksLikeHtml(text) {
+        const s = String(text ?? "").trimStart().slice(0, 400).toLowerCase();
+        return (
+          s.startsWith("<!doctype") ||
+          s.startsWith("<html") ||
+          (s.startsWith("<") && /<\/(html|body|head)\b/i.test(String(text ?? "")))
+        );
+      }
+
+      /** Plain-text summary for previews, HTTP bodies, and non-SVG responses. */
+      function humanizeErrorPayload(text) {
+        const raw = String(text ?? "");
+        if (!raw.trim()) return "";
+        if (/<svg\b/i.test(raw)) {
+          const s = extractPlantUmlErrorSummaryFromSvg(raw);
+          return s || "(SVG response — could not extract a short summary)";
+        }
+        if (responseLooksLikeHtml(raw)) {
+          const plain = stripHtmlToText(raw);
+          return plain || "(HTML response with no extractable text)";
+        }
+        return raw.trim();
+      }
+
+      function sameUnderlyingErrorMessage(a, b) {
+        let x = String(a ?? "").trim().replace(/\s+/g, " ");
+        let y = String(b ?? "").trim().replace(/\s+/g, " ");
+        for (let i = 0; i < 3; i++) {
+          const nx = x.replace(/^Error:\s*/i, "").trim();
+          const ny = y.replace(/^Error:\s*/i, "").trim();
+          if (nx === x && ny === y) break;
+          x = nx;
+          y = ny;
+        }
+        return x === y;
+      }
+
       function stringifyErrorDetails(err) {
         if (err == null) return "Unknown error (null/undefined).";
         if (typeof err === "string") return err;
@@ -215,16 +370,28 @@ WA --> User: Login success
           const parts = [];
           parts.push(`Name: ${err.name || "Error"}`);
           parts.push(`Message: ${err.message || "(empty message)"}`);
-          if (err.url) parts.push(`URL: ${err.url}`);
+          if (err.url) parts.push(`URL: ${shortenUrlForDisplay(err.url)}`);
           if (err.http) {
             const { status, statusText, body } = err.http;
             parts.push(`HTTP: ${status} ${statusText || ""}`.trim());
-            if (body) parts.push(`HTTP body:\n${safeSlice(body, 4000)}`);
+            if (body) {
+              const plain = humanizeErrorPayload(body);
+              parts.push(`HTTP body:\n${safeSlice(plain, 4000)}`);
+            }
           }
-          if (err.snippet) parts.push(`Response snippet:\n${safeSlice(err.snippet, 2000)}`);
+          if (err.snippet) {
+            const sn = humanizeErrorPayload(err.snippet);
+            parts.push(`Response snippet:\n${safeSlice(sn, 2000)}`);
+          }
           if (err.stack) parts.push(`Stack:\n${err.stack}`);
           if (err.cause) {
-            parts.push(`Cause:\n${stringifyErrorDetails(err.cause)}`);
+            const c = err.cause;
+            const dup =
+              c instanceof Error &&
+              sameUnderlyingErrorMessage(c.message, err.message);
+            if (!dup) {
+              parts.push(`Cause:\n${stringifyErrorDetails(err.cause)}`);
+            }
           }
           return parts.join("\n");
         }
@@ -284,43 +451,45 @@ WA --> User: Login success
         return `${SERVER}/png/${encoded}`;
       }
 
-      async function safeReadResponseText(response, maxChars) {
-        try {
-          const t = await response.text();
-          return safeSlice(t, maxChars);
-        } catch {
-          return "";
-        }
-      }
-
-      async function fetchText(url) {
+      /**
+       * PlantUML often returns HTTP 400 with a valid SVG error diagram (not plain text).
+       * Treat that as a successful fetch so the preview can show the diagram.
+       */
+      async function fetchPlantUmlSvg(url) {
         let r;
         try {
           r = await fetch(url);
         } catch (e) {
           const err = new Error(
-            `Network request failed while fetching PlantUML (${url}).`,
+            `Network request failed while fetching PlantUML (${shortenUrlForDisplay(url)}).`,
           );
           err.cause = e;
           err.url = url;
           throw err;
         }
 
-        if (!r.ok) {
-          const body = await safeReadResponseText(r, 8000);
-          const err = new Error(
-            `Request failed (${r.status} ${r.statusText || "Unknown status"}).`,
-          );
-          err.url = url;
-          err.http = {
-            status: r.status,
-            statusText: r.statusText || "",
-            body,
-          };
-          throw err;
+        const text = await r.text();
+
+        if (r.ok) {
+          return { text, httpStatus: r.status, plantumlErrorSvg: false };
         }
 
-        return r.text();
+        if (/<svg\b/i.test(text)) {
+          return { text, httpStatus: r.status, plantumlErrorSvg: true };
+        }
+
+        const label = httpStatusLabel(r.status, r.statusText);
+        const hint = humanizeErrorPayload(text) || "Empty response body.";
+        const err = new Error(
+          `PlantUML request failed (HTTP ${r.status}${label ? " " + label : ""}). ${hint}`,
+        );
+        err.url = url;
+        err.http = {
+          status: r.status,
+          statusText: r.statusText || "",
+          body: text,
+        };
+        throw err;
       }
 
       function downloadBlob(blob, filename) {
@@ -358,10 +527,14 @@ WA --> User: Login success
 
       function assertLooksLikeSvg(svgText, context) {
         if (!/<svg\b/i.test(svgText)) {
+          const plain = humanizeErrorPayload(svgText);
+          const hint = plain
+            ? plain.slice(0, 800) + (plain.length > 800 ? "…" : "")
+            : "The server response was not a valid SVG diagram.";
           const err = new Error(
-            `Unexpected response from PlantUML (not SVG).${context ? " " + context : ""}`,
+            `PlantUML did not return a diagram${context ? " (" + context + ")" : ""}. ${hint}`,
           );
-          err.snippet = safeSlice(svgText, 2000);
+          err.snippet = plain || safeSlice(svgText, 500);
           throw err;
         }
       }
@@ -381,10 +554,18 @@ WA --> User: Login success
         try {
           const encoded = getEncodedDiagram();
           const svgUrl = getSvgUrl(encoded);
-          const svgText = await fetchText(svgUrl);
+          const { text: svgText, httpStatus, plantumlErrorSvg } =
+            await fetchPlantUmlSvg(svgUrl);
           assertLooksLikeSvg(svgText, "during preview render");
           preview.innerHTML = svgText;
-          setStatus("Rendered successfully.");
+          if (plantumlErrorSvg) {
+            const summary = extractPlantUmlErrorSummaryFromSvg(svgText);
+            setStatus(
+              `PlantUML error (HTTP ${httpStatus}). ${summary || "See the preview diagram for the full message."}`,
+            );
+          } else {
+            setStatus("Rendered successfully.");
+          }
         } catch (e) {
           console.error(e);
           renderErrorInPreview(e);
@@ -400,7 +581,8 @@ WA --> User: Login success
       async function exportSvg() {
         try {
           const encoded = getEncodedDiagram();
-          const svgText = await fetchText(getSvgUrl(encoded));
+          const { text: svgText, httpStatus, plantumlErrorSvg } =
+            await fetchPlantUmlSvg(getSvgUrl(encoded));
           assertLooksLikeSvg(svgText, "during SVG export");
           const svgBlob = new Blob([svgText], {
             type: "image/svg+xml;charset=utf-8",
@@ -408,11 +590,14 @@ WA --> User: Login success
           const base = safeBaseFileName();
           const filename = `${base}.svg`;
           const saved = await saveBlobToSelectedFolder(svgBlob, filename);
+          const errNote = plantumlErrorSvg
+            ? ` — PlantUML returned an error diagram (HTTP ${httpStatus})`
+            : "";
           if (saved) {
-            setStatus(`SVG saved to selected folder as ${filename}.`);
+            setStatus(`SVG saved to selected folder as ${filename}.${errNote}`);
           } else {
             downloadBlob(svgBlob, filename);
-            setStatus("SVG downloaded (vector, best clarity).");
+            setStatus(`SVG downloaded (vector, best clarity).${errNote}`);
           }
         } catch (e) {
           console.error(e);
@@ -433,7 +618,8 @@ WA --> User: Login success
           const scale = Math.max(1, Math.min(16, Number(pngScale.value) || 4));
           pngScale.value = String(scale);
 
-          const svgText = await fetchText(getSvgUrl(encoded));
+          const { text: svgText, plantumlErrorSvg, httpStatus } =
+            await fetchPlantUmlSvg(getSvgUrl(encoded));
           assertLooksLikeSvg(svgText, "during PNG export");
           const svgBlob = new Blob([svgText], {
             type: "image/svg+xml;charset=utf-8",
@@ -447,7 +633,9 @@ WA --> User: Login success
               const err = new Error(
                 "Failed to rasterize SVG to PNG (image load error).",
               );
-              err.snippet = safeSlice(svgText, 2000);
+              err.snippet =
+                extractPlantUmlErrorSummaryFromSvg(svgText) ||
+                safeSlice(svgText, 800);
               err.cause = evt;
               reject(err);
             };
@@ -472,13 +660,16 @@ WA --> User: Login success
           if (!blob) throw new Error("Could not create PNG.");
           const filename = `${base}.png`;
           const saved = await saveBlobToSelectedFolder(blob, filename);
+          const errNote = plantumlErrorSvg
+            ? ` — PlantUML returned an error diagram (HTTP ${httpStatus})`
+            : "";
           if (saved) {
             setStatus(
-              `PNG saved to selected folder as ${filename} (${scale}x).`,
+              `PNG saved to selected folder as ${filename} (${scale}x).${errNote}`,
             );
           } else {
             downloadBlob(blob, filename);
-            setStatus(`PNG downloaded at ${scale}x scale.`);
+            setStatus(`PNG downloaded at ${scale}x scale.${errNote}`);
           }
         } catch (e) {
           console.error(e);

@@ -219,6 +219,197 @@ digraph G {
         return s.slice(0, maxChars) + "\n...[truncated]";
       }
 
+      function stripHtmlToText(html) {
+        const raw = String(html ?? "");
+        if (!raw.trim()) return "";
+        try {
+          const doc = new DOMParser().parseFromString(raw, "text/html");
+          const t =
+            doc.body?.innerText ||
+            doc.documentElement?.textContent ||
+            "";
+          return t.replace(/\s+/g, " ").trim();
+        } catch {
+          return raw
+            .replace(/<[^>]+>/g, " ")
+            .replace(/\s+/g, " ")
+            .trim();
+        }
+      }
+
+      function responseLooksLikeHtml(text) {
+        const s = String(text ?? "").trimStart().slice(0, 400).toLowerCase();
+        return (
+          s.startsWith("<!doctype") ||
+          s.startsWith("<html") ||
+          (s.startsWith("<") && /<\/(html|body|head)\b/i.test(String(text ?? "")))
+        );
+      }
+
+      /** Pull readable lines from SVG (Graphviz can embed errors or diagnostics in <text>). */
+      function extractGraphvizErrorSummaryFromSvg(svgText) {
+        const raw = String(svgText ?? "");
+        if (!/<svg\b/i.test(raw)) return "";
+
+        let doc;
+        try {
+          doc = new DOMParser().parseFromString(raw, "image/svg+xml");
+          const pe = doc.querySelector("parsererror");
+          if (pe && pe.textContent?.trim()) {
+            return pe.textContent.trim().slice(0, 800);
+          }
+        } catch {
+          return "";
+        }
+
+        const textEls = Array.from(doc.querySelectorAll("text"));
+        const texts = textEls
+          .map((el) => (el.textContent || "").replace(/\s+/g, " ").trim())
+          .filter((t) => t && t !== "\u00a0");
+
+        const blob = texts.join(" ");
+
+        const patterns = [
+          /syntax error[^\n.]{0,500}/i,
+          /Parse error[^\n.]{0,500}/i,
+          /Error:\s*[^\n.]{0,600}/i,
+          /error in line[^\n.]{0,400}/i,
+          /Error in line[^\n.]{0,400}/i,
+          /line \d+:[^\n.]{0,500}/i,
+          /cannot find[^\n.]{0,400}/i,
+          /Unknown node[^\n.]{0,400}/i,
+          /undefined node[^\n.]{0,400}/i,
+          /badly delimited[^\n.]{0,400}/i,
+          /Unexpected [^\n.]{0,400}/i,
+          /Invalid [^\n.]{0,400}/i,
+        ];
+        for (const re of patterns) {
+          const m = blob.match(re);
+          if (m) return m[0].trim().slice(0, 900);
+        }
+
+        const redTexts = textEls
+          .filter((el) => {
+            const fill = (el.getAttribute("fill") || "").toLowerCase();
+            return (
+              fill === "#ff0000" ||
+              fill === "#f00" ||
+              fill === "red" ||
+              /^#f{1,2}0{4,6}$/i.test(fill)
+            );
+          })
+          .map((el) => el.textContent.trim())
+          .filter(Boolean);
+        if (redTexts.length) {
+          return redTexts.join(" — ").slice(0, 900);
+        }
+
+        const lineRef = blob.match(/line\s+(\d+)/i);
+        if (lineRef) {
+          const n = lineRef[1];
+          const idx = texts.findIndex((t) => /line\s+\d+/i.test(t));
+          if (idx >= 0) {
+            const tail = texts.slice(idx, idx + 12).join(" | ");
+            return `Near line ${n}. ${tail.slice(0, 850)}${tail.length > 850 ? "…" : ""}`;
+          }
+          return `Graphviz references line ${n} (see preview if shown).`;
+        }
+
+        return blob.replace(/\s+/g, " ").trim().slice(0, 700);
+      }
+
+      function shortenUrlForDisplay(url) {
+        const s = String(url ?? "");
+        if (s.length <= 120) return s;
+        try {
+          const u = new URL(s);
+          const enc = u.pathname.split("/").pop() || "";
+          const head = `${u.origin}${u.pathname.slice(0, u.pathname.lastIndexOf("/") + 1)}`;
+          return `${head}${enc.slice(0, 40)}…${enc.length > 40 ? ` (${enc.length} chars)` : ""}`;
+        } catch {
+          return s.slice(0, 120) + "…";
+        }
+      }
+
+      /** Collapse noisy viz.js / Graphviz multi-line messages into a single readable block. */
+      function normalizeGraphvizErrorMessage(msg) {
+        let s = String(msg ?? "").trim();
+        if (!s) return "";
+        s = s.replace(/^(Error:\s*)+/i, "");
+        const lines = s
+          .split(/\r?\n/)
+          .map((l) => l.trim())
+          .filter(Boolean);
+        const joined = lines.join("\n");
+        return joined.length > 2000 ? joined.slice(0, 2000) + "…" : joined;
+      }
+
+      function humanizeErrorPayload(text) {
+        const raw = String(text ?? "");
+        if (!raw.trim()) return "";
+        if (/<svg\b/i.test(raw)) {
+          const s = extractGraphvizErrorSummaryFromSvg(raw);
+          return s || "(SVG response — could not extract a short summary)";
+        }
+        if (responseLooksLikeHtml(raw)) {
+          const plain = stripHtmlToText(raw);
+          return plain || "(HTML with no extractable text)";
+        }
+        return raw.trim();
+      }
+
+      /** DOT/graphviz parse errors already say what is wrong; viz.js stack is only noise. */
+      function isGraphvizParseLikeMessage(msg) {
+        const m = String(msg ?? "").trim();
+        return /syntax error in line|parse error|unknown node|badly delimited|unexpected|invalid/i.test(
+          m,
+        );
+      }
+
+      function sanitizeErrorStackForDisplay(stack, message) {
+        if (!stack || typeof stack !== "string") return "";
+        const msg = String(message ?? "").trim();
+        if (msg && isGraphvizParseLikeMessage(msg)) return "";
+
+        const lines = stack.split(/\r?\n/);
+        const kept = [];
+        for (const rawLine of lines) {
+          const line = rawLine.trimEnd();
+          if (!line.trim()) continue;
+          if (/cdn\.jsdelivr\.net|\/viz\.js|full\.render\.js/i.test(line)) continue;
+          if (/^\s*at\s+.*(?:viz\.js|full\.render\.js)/i.test(line)) continue;
+          if (/^\s*at\s+new Promise\b/i.test(line)) continue;
+          if (/^\s*at\s+ModuleWrapper\.render\b/i.test(line)) continue;
+          kept.push(line);
+        }
+        if (kept.length === 0) return "";
+
+        const out = [];
+        for (let i = 0; i < kept.length; i++) {
+          const line = kept[i];
+          if (i === 0 && msg) {
+            const withoutPrefix = line.replace(/^\s*Error:\s*/i, "").trim();
+            if (withoutPrefix === msg || line === `Error: ${msg}`) continue;
+          }
+          out.push(line);
+        }
+        return out.join("\n").trim();
+      }
+
+      /** Compare after stripping repeated "Error:" prefixes (viz.js vs our wrapper). */
+      function sameUnderlyingErrorMessage(a, b) {
+        let x = String(a ?? "").trim().replace(/\s+/g, " ");
+        let y = String(b ?? "").trim().replace(/\s+/g, " ");
+        for (let i = 0; i < 3; i++) {
+          const nx = x.replace(/^Error:\s*/i, "").trim();
+          const ny = y.replace(/^Error:\s*/i, "").trim();
+          if (nx === x && ny === y) break;
+          x = nx;
+          y = ny;
+        }
+        return x === y;
+      }
+
       function stringifyErrorDetails(err) {
         if (err == null) return "Unknown error (null/undefined).";
         if (typeof err === "string") return err;
@@ -226,8 +417,22 @@ digraph G {
           const parts = [];
           parts.push(`Name: ${err.name || "Error"}`);
           parts.push(`Message: ${err.message || "(empty message)"}`);
-          if (err.stack) parts.push(`Stack:\n${err.stack}`);
-          if (err.cause) parts.push(`Cause:\n${stringifyErrorDetails(err.cause)}`);
+          if (err.url) parts.push(`URL: ${shortenUrlForDisplay(err.url)}`);
+          if (err.snippet) {
+            const sn = humanizeErrorPayload(err.snippet);
+            parts.push(`Response snippet:\n${safeSlice(sn, 2000)}`);
+          }
+          const stackDisp = sanitizeErrorStackForDisplay(err.stack, err.message);
+          if (stackDisp) parts.push(`Stack:\n${stackDisp}`);
+          if (err.cause) {
+            const c = err.cause;
+            const dup =
+              c instanceof Error &&
+              sameUnderlyingErrorMessage(c.message, err.message);
+            if (!dup) {
+              parts.push(`Cause:\n${stringifyErrorDetails(err.cause)}`);
+            }
+          }
           return parts.join("\n");
         }
         try {
@@ -282,10 +487,14 @@ digraph G {
 
       function assertLooksLikeSvg(svgText, context) {
         if (!/<svg\b/i.test(svgText)) {
+          const plain = humanizeErrorPayload(svgText);
+          const hint = plain
+            ? plain.slice(0, 800) + (plain.length > 800 ? "…" : "")
+            : "The renderer output was not valid SVG.";
           const err = new Error(
-            `Unexpected output from Graphviz (not SVG).${context ? " " + context : ""}`,
+            `Graphviz did not produce a diagram${context ? " (" + context + ")" : ""}. ${hint}`,
           );
-          err.snippet = safeSlice(svgText, 2000);
+          err.snippet = plain || safeSlice(svgText, 500);
           throw err;
         }
       }
@@ -316,8 +525,20 @@ digraph G {
         } catch (e) {
           // viz.js can become unusable after a render error; recreate it.
           viz = null;
-          const err = new Error("Failed to render Graphviz.");
-          err.cause = e;
+          const raw =
+            e instanceof Error
+              ? e.message
+              : typeof e === "string"
+                ? e
+                : e != null
+                  ? String(e)
+                  : "";
+          const normalized = normalizeGraphvizErrorMessage(raw);
+          const err = new Error(
+            normalized.trim() ||
+              raw.trim() ||
+              "Failed to render Graphviz (unknown error).",
+          );
           throw err;
         }
       }
@@ -384,7 +605,9 @@ digraph G {
               const err = new Error(
                 "Failed to rasterize SVG to PNG (image load error).",
               );
-              err.snippet = safeSlice(svgText, 2000);
+              err.snippet =
+                extractGraphvizErrorSummaryFromSvg(svgText) ||
+                safeSlice(svgText, 800);
               err.cause = evt;
               reject(err);
             };
