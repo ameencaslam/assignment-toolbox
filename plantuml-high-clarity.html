@@ -407,7 +407,7 @@ WA --> User: Login success
         const source = String(umlInput.value || "").trim();
         if (!source) {
           throw new Error(
-            "PlantUML text is empty. Paste a diagram that includes @startuml ... @enduml.",
+            "PlantUML text is empty. Paste a diagram that includes a @start... ... @end... block.",
           );
         }
 
@@ -417,10 +417,22 @@ WA --> User: Login success
           );
         }
 
-        const hasStart = /^\s*@startuml\b/im.test(source);
-        const hasEnd = /^\s*@enduml\b/im.test(source);
-        if (!hasStart || !hasEnd) {
-          throw new Error("Diagram must include @startuml and @enduml.");
+        // Support PlantUML diagram blocks like:
+        // - @startuml ... @enduml
+        // - @startmindmap ... @endmindmap
+        // (and other @startXYZ / @endXYZ variants PlantUML recognizes)
+        const startMatch = source.match(/^\s*@start(\w+)\b/im);
+        if (!startMatch) {
+          throw new Error(
+            "PlantUML diagram must include a @start... directive (e.g. @startuml or @startmindmap).",
+          );
+        }
+
+        const startType = startMatch[1];
+        const endDirective = `@end${startType}`;
+        const hasEnd = new RegExp(`^\\s*${endDirective}\\b`, "im").test(source);
+        if (!hasEnd) {
+          throw new Error(`Diagram must include ${endDirective}.`);
         }
 
         // Force a consistent export font across render/SVG/PNG.
@@ -430,8 +442,9 @@ WA --> User: Login success
           "skinparam defaultFontName Montserrat\n" +
           "skinparam defaultFontStyle bold\n";
 
+        const startDirectiveRe = new RegExp(`^\\s*@start${startType}\\b`, "im");
         const injected = source.replace(
-          /^\s*@startuml\b/i,
+          startDirectiveRe,
           (m) => `${m}${fontBlock}`,
         );
         try {
