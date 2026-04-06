@@ -160,6 +160,80 @@ plt.grid(True, alpha=0.3)</textarea
         return pyodidePromise;
       }
 
+      function parseMissingModuleName(err) {
+        const msg =
+          err && typeof err === "object" && "message" in err
+            ? String(err.message || "")
+            : String(err || "");
+        const m = msg.match(/No module named ['"]([^'"]+)['"]/);
+        if (!m) return "";
+        const raw = String(m[1] || "").trim();
+        // Only the top-level module is loadable via loadPackage/micropip.
+        return raw.split(".")[0] || "";
+      }
+
+      function extractImportedTopLevelModules(src) {
+        const s = String(src || "");
+        const out = new Set();
+        // Very small/fast heuristic: grab `import x` and `from x import ...`
+        for (const m of s.matchAll(/^\s*import\s+([a-zA-Z0-9_.,\s]+)\s*$/gm)) {
+          const blob = m[1] || "";
+          for (const part of blob.split(",")) {
+            const name = part.trim().split(/\s+as\s+/i)[0]?.trim();
+            if (name) out.add(name.split(".")[0]);
+          }
+        }
+        for (const m of s.matchAll(/^\s*from\s+([a-zA-Z0-9_.]+)\s+import\s+/gm)) {
+          const name = (m[1] || "").trim();
+          if (name) out.add(name.split(".")[0]);
+        }
+        out.delete("matplotlib");
+        out.delete("numpy");
+        out.delete("np");
+        out.delete("plt");
+        out.delete("__future__");
+        return Array.from(out).filter(Boolean);
+      }
+
+      async function tryEnsureModule(pyodide, moduleName) {
+        const name = String(moduleName || "").trim();
+        if (!name) return false;
+
+        // Fast path: if it's already importable, nothing to do.
+        try {
+          pyodide.globals.set("MODNAME", name);
+          await pyodide.runPythonAsync(
+            "import importlib\nimportlib.import_module(MODNAME)\n",
+          );
+          return true;
+        } catch {
+          // continue
+        }
+
+        // 1) Prefer Pyodide's built-in package index.
+        try {
+          setStatus(`Loading ${name}…`);
+          await pyodide.loadPackage([name]);
+          return true;
+        } catch (e) {
+          console.error(e);
+        }
+
+        // 2) Fallback: micropip (may or may not work depending on wheels / network).
+        try {
+          setStatus(`Installing ${name} (micropip)…`);
+          await pyodide.loadPackage(["micropip"]);
+          pyodide.globals.set("PKGNAME", name);
+          await pyodide.runPythonAsync(
+            "import micropip\nawait micropip.install(PKGNAME)\n",
+          );
+          return true;
+        } catch (e) {
+          console.error(e);
+          return false;
+        }
+      }
+
       function safeBaseFileName() {
         const raw = String(fileName.value || "").trim();
         const cleaned = raw
@@ -219,9 +293,18 @@ plt.grid(True, alpha=0.3)</textarea
         if (!src) throw new Error("Python code is empty.");
 
         const pyodide = await ensurePyodide();
+        // Best-effort preload for obvious imports to avoid first-run errors.
+        // (Still handles dynamic imports via the runtime retry below.)
+        const wanted = extractImportedTopLevelModules(src);
+        for (const mod of wanted) {
+          // Avoid a long preload list; only try a few quickly.
+          // pandas is the common case for tables.
+          if (mod === "pandas") await tryEnsureModule(pyodide, mod);
+        }
+
         pyodide.globals.set("USER_CODE", src);
 
-        try {
+        async function runOnce() {
           await pyodide.runPythonAsync(`
 import io
 import matplotlib
@@ -238,10 +321,29 @@ fig.savefig(buf, format="svg", bbox_inches="tight")
 svg_out = buf.getvalue().decode("utf-8")
 plt.close("all")
 `);
-        } catch (e) {
-          const msg = pyodideErrorToMessage(e);
+        }
+
+        // Generic retry on missing-module errors (loadPackage → micropip) to prevent repeats.
+        let lastErr = null;
+        const attempted = new Set();
+        for (let attempt = 0; attempt < 3; attempt++) {
+          try {
+            await runOnce();
+            lastErr = null;
+            break;
+          } catch (e) {
+            lastErr = e;
+            const missing = parseMissingModuleName(e);
+            if (!missing || attempted.has(missing)) break;
+            attempted.add(missing);
+            const ok = await tryEnsureModule(pyodide, missing);
+            if (!ok) break;
+          }
+        }
+        if (lastErr) {
+          const msg = pyodideErrorToMessage(lastErr);
           const err = new Error(msg || "Python execution failed.");
-          if (e && typeof e === "object") err.cause = e;
+          if (lastErr && typeof lastErr === "object") err.cause = lastErr;
           throw err;
         }
 
