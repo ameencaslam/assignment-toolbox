@@ -5,125 +5,37 @@
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>PlantUML High Clarity Export</title>
     <link rel="stylesheet" href="./style.css" />
-    <style>
-      .umlLayout {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 14px;
-      }
-      .umlEditor {
-        min-height: 520px;
-        width: 100%;
-        resize: vertical;
-        border-radius: 12px;
-        border: 1px solid var(--line);
-        padding: 12px;
-        background: rgba(0, 0, 0, 0.26);
-        color: var(--text);
-        font-family: var(--mono);
-        line-height: 1.4;
-      }
-      .umlPreview {
-        border: 1px solid var(--line);
-        border-radius: 12px;
-        min-height: 520px;
-        background: rgba(0, 0, 0, 0.14);
-        overflow: auto;
-      }
-      .umlPreview img {
-        display: block;
-        margin: 0 auto;
-        max-width: none;
-      }
-      .umlActions {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 10px;
-      }
-      .umlScale {
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-      }
-      .umlScale input {
-        width: 88px;
-        padding: 9px 10px;
-        border-radius: 10px;
-        background: rgba(255, 255, 255, 0.03);
-        border: 1px solid var(--line);
-        color: var(--text);
-      }
-      @media (max-width: 980px) {
-        .umlLayout {
-          grid-template-columns: 1fr;
-        }
-      }
-
-      .statusDetails {
-        margin-top: 10px;
-        white-space: pre-wrap;
-        word-break: break-word;
-        font-family: var(--mono);
-        color: rgba(230, 237, 246, 0.92);
-        background: rgba(255, 93, 143, 0.08);
-        border: 1px solid rgba(255, 93, 143, 0.25);
-        padding: 10px 12px;
-        border-radius: 10px;
-        max-height: 220px;
-        overflow: auto;
-      }
-
-      .umlErrorBox {
-        padding: 18px;
-        color: rgba(230, 237, 246, 0.95);
-      }
-
-      .umlErrorBox__title {
-        font-weight: 700;
-        margin-bottom: 10px;
-      }
-
-      .umlErrorBox__pre {
-        font-family: var(--mono);
-        white-space: pre-wrap;
-        word-break: break-word;
-        background: rgba(255, 93, 143, 0.08);
-        border: 1px solid rgba(255, 93, 143, 0.25);
-        padding: 10px 12px;
-        border-radius: 10px;
-        margin: 0;
-        max-height: 520px;
-        overflow: auto;
-      }
-    </style>
   </head>
   <body>
     <div class="app">
       <header class="topbar">
-        <div class="topbar__title">PlantUML High Clarity Export</div>
+        <div class="topbar__left">
+          <a class="brand" href="./index.html" aria-label="ASG home">ASG</a>
+          <div class="topbar__title">PlantUML HQ Export</div>
+        </div>
         <div class="topbar__actions">
-          <a class="btn" href="./index.html">Back to menu</a>
-          <a class="btn" href="./packer.html">Open packer</a>
+          <a class="btn btn--ghost" href="./index.html">Menu</a>
+          <a class="btn" href="./packer.html">Packer</a>
         </div>
       </header>
 
-      <main class="main" style="grid-template-columns: 1fr">
+      <main class="main main--single">
         <section class="panel">
-          <div class="panel__title">Editor and Preview</div>
-          <div class="umlActions" style="margin-bottom: 10px">
+          <div class="panel__title">Editor &amp; preview</div>
+          <div class="toolToolbar">
             <button id="renderBtn" class="btn btn--primary" type="button">
               Render
             </button>
             <button id="svgBtn" class="btn" type="button">Export SVG</button>
             <button id="pngBtn" class="btn" type="button">Export PNG</button>
             <button id="folderBtn" class="btn" type="button">
-              Select Download Folder
+              Select folder
             </button>
-            <label class="umlScale">
+            <label class="toolField">
               <span class="setting__label">File name</span>
               <input id="fileName" type="text" value="diagram" />
             </label>
-            <label class="umlScale">
+            <label class="toolField toolField--narrow">
               <span class="setting__label">PNG scale</span>
               <input
                 id="pngScale"
@@ -135,8 +47,8 @@
               />
             </label>
           </div>
-          <div class="umlLayout">
-            <textarea id="umlInput" class="umlEditor" spellcheck="false">
+          <div class="toolLayout">
+            <textarea id="umlInput" class="toolEditor" spellcheck="false">
 @startuml
 title Authentication flow
 actor User
@@ -152,7 +64,7 @@ API --> WA: JWT token
 WA --> User: Login success
 @enduml</textarea
             >
-            <div id="preview" class="umlPreview"></div>
+            <div id="preview" class="toolPreview"></div>
           </div>
           <div class="panel__footer">
             <div id="status" class="status">
@@ -556,9 +468,9 @@ WA --> User: Login success
         const details = stringifyErrorDetails(err);
         const safe = escapeHtml(details);
         preview.innerHTML = `
-          <div class="umlErrorBox">
-            <div class="umlErrorBox__title">Error</div>
-            <pre class="umlErrorBox__pre">${safe}</pre>
+          <div class="errorBox">
+            <div class="errorBox__title">Error</div>
+            <pre class="errorBox__pre">${safe}</pre>
           </div>
         `;
       }

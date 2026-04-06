@@ -9,14 +9,15 @@
   <body>
     <div class="app">
       <header class="topbar">
-        <div class="topbar__title">Snippet Sheet Packer</div>
-        <div class="topbar__actions">
-          <a class="btn" href="./index.html">Menu</a>
-          <a class="btn" href="./code-snipper-maker.html">Code Snipper Maker</a>
-          <a class="btn" href="./plantuml-high-clarity.html"
-            >PlantUML HQ Export</a
-          >
-          <a class="btn" href="./calibrate.html">Calibrate (A4)</a>
+        <div class="topbar__left">
+          <a class="brand" href="./index.html" aria-label="ASG home">ASG</a>
+          <div class="topbar__title">Snippet Sheet Packer</div>
+        </div>
+        <nav class="topbar__nav topbar__nav--scroll" aria-label="Packer actions">
+          <a class="btn btn--ghost" href="./index.html">Menu</a>
+          <a class="btn" href="./code-snipper-maker.html">Snipper</a>
+          <a class="btn" href="./plantuml-high-clarity.html">PlantUML</a>
+          <a class="btn" href="./calibrate.html">Calibrate</a>
           <label class="btn">
             <input
               id="fileInput"
@@ -30,7 +31,7 @@
           <button id="exportBtn" class="btn btn--primary" disabled>
             Export A4 PDF
           </button>
-        </div>
+        </nav>
       </header>
 
       <main class="main">
@@ -178,7 +179,7 @@
           </div>
           <div class="panel__footer">
             <div id="status" class="status">Choose images to begin.</div>
-            <div style="margin-top: 10px">
+            <div class="panel__footer-extras">
               <button id="clearSavedBtn" class="btn btn--small" type="button">
                 Clear saved image settings
               </button>

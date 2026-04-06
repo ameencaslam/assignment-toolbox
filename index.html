@@ -3,119 +3,148 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>ASG Tools Menu</title>
+    <title>ASG Tools</title>
     <link rel="stylesheet" href="./style.css" />
-    <style>
-      .menuGrid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-        gap: 12px;
-      }
-      .menuCard {
-        border: 1px solid var(--line);
-        border-radius: 14px;
-        padding: 14px;
-        background: linear-gradient(
-          180deg,
-          rgba(15, 22, 32, 0.9),
-          rgba(12, 18, 27, 0.86)
-        );
-      }
-      .menuCard__title {
-        font-weight: 700;
-        margin-bottom: 8px;
-      }
-      .menuCard__desc {
-        color: var(--muted);
-        font-size: 13px;
-        line-height: 1.45;
-        min-height: 58px;
-      }
-      .menuCard__actions {
-        margin-top: 12px;
-      }
-    </style>
   </head>
   <body>
     <div class="app">
       <header class="topbar">
-        <div class="topbar__title">ASG Tools</div>
+        <div class="topbar__left">
+          <a class="brand" href="./index.html" aria-label="ASG home">ASG</a>
+          <div class="topbar__title">Tool suite</div>
+        </div>
         <div class="topbar__actions">
-          <span class="mono">Menu / Guide</span>
+          <span class="topbar__meta">Browser-only · No build</span>
         </div>
       </header>
 
-      <main class="main" style="grid-template-columns: 1fr">
+      <main class="main main--single">
         <section class="panel">
-          <div class="panel__title">Choose a tool</div>
+          <div class="landing__hero">
+            <span class="landing__eyebrow">Assignment &amp; study helpers</span>
+            <h1 class="landing__headline">Pick a tool and go</h1>
+            <p class="landing__sub">
+              Static pages with export-friendly workflows—packing snippets for
+              print, diagrams, code images, and calibration for accurate cm
+              previews.
+            </p>
+          </div>
+
           <div class="menuGrid">
             <article class="menuCard">
-              <div class="menuCard__title">Snippet Sheet Packer</div>
-              <div class="menuCard__desc">
+              <div class="menuCard__icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75">
+                  <rect x="3" y="3" width="8" height="8" rx="1.5" />
+                  <rect x="13" y="3" width="8" height="8" rx="1.5" />
+                  <rect x="3" y="13" width="8" height="8" rx="1.5" />
+                  <rect x="13" y="13" width="8" height="8" rx="1.5" />
+                </svg>
+              </div>
+              <span class="menuCard__tag">Print</span>
+              <h2 class="menuCard__title">Snippet Sheet Packer</h2>
+              <p class="menuCard__desc">
                 Load images, set print sizes, and auto-pack them into A4 pages
                 for PDF export.
-              </div>
+              </p>
               <div class="menuCard__actions">
                 <a class="btn btn--primary" href="./packer.html">Open Packer</a>
               </div>
             </article>
 
             <article class="menuCard">
-              <div class="menuCard__title">Calibrate (A4)</div>
-              <div class="menuCard__desc">
+              <div class="menuCard__icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75">
+                  <path d="M4 20h16M6 16V8l4-4 4 4v8" />
+                  <path d="M10 12h4" />
+                </svg>
+              </div>
+              <span class="menuCard__tag">Calibration</span>
+              <h2 class="menuCard__title">Calibrate (A4)</h2>
+              <p class="menuCard__desc">
                 Match on-screen size to a real A4 sheet so cm-based previews are
                 accurate.
-              </div>
+              </p>
               <div class="menuCard__actions">
                 <a class="btn" href="./calibrate.html">Open Calibrator</a>
               </div>
             </article>
 
             <article class="menuCard">
-              <div class="menuCard__title">PlantUML HQ Export</div>
-              <div class="menuCard__desc">
-                Render PlantUML and export crisp SVG or high-scale PNG with custom
-                filename and optional folder save.
+              <div class="menuCard__icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75">
+                  <path d="M12 4v4M12 16v4M4 12h4M16 12h4" />
+                  <circle cx="12" cy="12" r="3" />
+                  <path d="M8 8l-2-2M16 8l2-2M8 16l-2 2M16 16l2 2" />
+                </svg>
               </div>
+              <span class="menuCard__tag">Diagram</span>
+              <h2 class="menuCard__title">PlantUML HQ Export</h2>
+              <p class="menuCard__desc">
+                Render PlantUML and export crisp SVG or high-scale PNG with
+                custom filename and optional folder save.
+              </p>
               <div class="menuCard__actions">
                 <a class="btn" href="./plantuml-high-clarity.html"
-                  >Open PlantUML Tool</a
+                  >Open PlantUML</a
                 >
               </div>
             </article>
 
             <article class="menuCard">
-              <div class="menuCard__title">Graphviz HQ Export</div>
-              <div class="menuCard__desc">
+              <div class="menuCard__icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75">
+                  <circle cx="6" cy="12" r="2.5" />
+                  <circle cx="18" cy="8" r="2.5" />
+                  <circle cx="18" cy="16" r="2.5" />
+                  <path d="M8.2 11.2l7.6-2.4M8.2 12.8l7.6 2.4M16 8v8" />
+                </svg>
+              </div>
+              <span class="menuCard__tag">Diagram</span>
+              <h2 class="menuCard__title">Graphviz HQ Export</h2>
+              <p class="menuCard__desc">
                 Render Graphviz DOT and export crisp SVG or high-scale PNG with
                 custom filename and optional folder save.
-              </div>
+              </p>
               <div class="menuCard__actions">
                 <a class="btn" href="./graphviz-high-clarity.html"
-                  >Open Graphviz Tool</a
+                  >Open Graphviz</a
                 >
               </div>
             </article>
 
             <article class="menuCard">
-              <div class="menuCard__title">Matplotlib HQ Export</div>
-              <div class="menuCard__desc">
-                Run Matplotlib (Python in the browser) and export crisp SVG or
-                high-scale PNG with custom filename and optional folder save.
+              <div class="menuCard__icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75">
+                  <path d="M4 18c3-6 5-9 8-9s5 3 8 9" />
+                  <path d="M4 18h16" />
+                </svg>
               </div>
+              <span class="menuCard__tag">Python</span>
+              <h2 class="menuCard__title">Matplotlib HQ Export</h2>
+              <p class="menuCard__desc">
+                Run Matplotlib in the browser and export crisp SVG or high-scale
+                PNG with custom filename and optional folder save.
+              </p>
               <div class="menuCard__actions">
                 <a class="btn" href="./matplotlib-high-clarity.html"
-                  >Open Matplotlib Tool</a
+                  >Open Matplotlib</a
                 >
               </div>
             </article>
 
             <article class="menuCard">
-              <div class="menuCard__title">Code Snipper Maker</div>
-              <div class="menuCard__desc">
+              <div class="menuCard__icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75">
+                  <path d="M8 9l-3 3 3 3M16 9l3 3-3 3" />
+                  <path d="M13 7l-2 10" />
+                </svg>
+              </div>
+              <span class="menuCard__tag">Code</span>
+              <h2 class="menuCard__title">Code Snipper Maker</h2>
+              <p class="menuCard__desc">
                 Create monochrome code snippets (white background, black text,
                 gray comments) and export as PNG.
-              </div>
+              </p>
               <div class="menuCard__actions">
                 <a class="btn" href="./code-snipper-maker.html">Open Snipper</a>
               </div>
