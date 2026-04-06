@@ -911,7 +911,7 @@ input[type="range"] {
   overflow: auto;
 }
 
-/* ——— Code snipper (light canvas inside dark chrome) ——— */
+/* ——— Code snippet maker (light canvas inside dark chrome) ——— */
 .snippetToolbar {
   display: flex;
   gap: 8px;

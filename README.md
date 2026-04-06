@@ -11,7 +11,7 @@ This repo is a small browser-only toolset (no build step). You can open it direc
    - `plantuml-high-clarity.html` — PlantUML HQ Export (SVG/PNG export)
    - `graphviz-high-clarity.html` — Graphviz HQ Export (SVG/PNG export)
    - `matplotlib-high-clarity.html` — Matplotlib HQ Export (SVG/PNG export, Pyodide)
-   - `code-snipper-maker.html` — Code Snipper Maker (PNG export)
+   - `code-snippet-maker.html` — Code Snippet Maker (PNG export)
 
 ### Notes about dependencies
 
@@ -26,7 +26,7 @@ This repo is a small browser-only toolset (no build step). You can open it direc
 - **PlantUML HQ Export** (`plantuml-high-clarity.html`): exports `*.svg` (best clarity) and `*.png` (scaled).
 - **Graphviz HQ Export** (`graphviz-high-clarity.html`): exports `*.svg` (best clarity) and `*.png` (scaled).
 - **Matplotlib HQ Export** (`matplotlib-high-clarity.html`): exports `*.svg` (best clarity) and `*.png` (scaled).
-- **Code Snipper Maker** (`code-snipper-maker.html`): exports `*.png`.
+- **Code Snippet Maker** (`code-snippet-maker.html`): exports `*.png`.
 
 ### You can use it here
 
