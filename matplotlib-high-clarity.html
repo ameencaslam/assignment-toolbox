@@ -1,0 +1,503 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Matplotlib High Clarity Export</title>
+    <link rel="stylesheet" href="./style.css" />
+    <style>
+      .mplLayout {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 14px;
+      }
+      .mplEditor {
+        min-height: 520px;
+        width: 100%;
+        resize: vertical;
+        border-radius: 12px;
+        border: 1px solid var(--line);
+        padding: 12px;
+        background: rgba(0, 0, 0, 0.26);
+        color: var(--text);
+        font-family: var(--mono);
+        line-height: 1.4;
+      }
+      .mplPreview {
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        min-height: 520px;
+        background: rgba(0, 0, 0, 0.14);
+        overflow: auto;
+      }
+      .mplPreview svg {
+        display: block;
+        margin: 0 auto;
+        max-width: none;
+      }
+      .mplActions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+      .mplControl {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .mplControl input,
+      .mplControl select {
+        width: 160px;
+        padding: 9px 10px;
+        border-radius: 10px;
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid var(--line);
+        color: var(--text);
+      }
+      .mplControl--small input {
+        width: 88px;
+      }
+
+      @media (max-width: 980px) {
+        .mplLayout {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      .statusDetails {
+        margin-top: 10px;
+        white-space: pre-wrap;
+        word-break: break-word;
+        font-family: var(--mono);
+        color: rgba(230, 237, 246, 0.92);
+        background: rgba(255, 93, 143, 0.08);
+        border: 1px solid rgba(255, 93, 143, 0.25);
+        padding: 10px 12px;
+        border-radius: 10px;
+        max-height: 220px;
+        overflow: auto;
+      }
+
+      .mplErrorBox {
+        padding: 18px;
+        color: rgba(230, 237, 246, 0.95);
+      }
+      .mplErrorBox__title {
+        font-weight: 700;
+        margin-bottom: 10px;
+      }
+      .mplErrorBox__pre {
+        font-family: var(--mono);
+        white-space: pre-wrap;
+        word-break: break-word;
+        background: rgba(255, 93, 143, 0.08);
+        border: 1px solid rgba(255, 93, 143, 0.25);
+        padding: 10px 12px;
+        border-radius: 10px;
+        margin: 0;
+        max-height: 520px;
+        overflow: auto;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <header class="topbar">
+        <div class="topbar__title">Matplotlib High Clarity Export</div>
+        <div class="topbar__actions">
+          <a class="btn" href="./index.html">Back to menu</a>
+          <a class="btn" href="./packer.html">Open packer</a>
+        </div>
+      </header>
+
+      <main class="main" style="grid-template-columns: 1fr">
+        <section class="panel">
+          <div class="panel__title">Editor and Preview</div>
+          <div class="mplActions" style="margin-bottom: 10px">
+            <button id="renderBtn" class="btn btn--primary" type="button">
+              Render
+            </button>
+            <button id="svgBtn" class="btn" type="button">Export SVG</button>
+            <button id="pngBtn" class="btn" type="button">Export PNG</button>
+            <button id="folderBtn" class="btn" type="button">
+              Select Download Folder
+            </button>
+            <label class="mplControl">
+              <span class="setting__label">File name</span>
+              <input id="fileName" type="text" value="plot" />
+            </label>
+            <label class="mplControl mplControl--small">
+              <span class="setting__label">PNG scale</span>
+              <input
+                id="pngScale"
+                type="number"
+                min="1"
+                max="16"
+                step="1"
+                value="4"
+              />
+            </label>
+          </div>
+          <div class="mplLayout">
+            <textarea id="pyInput" class="mplEditor" spellcheck="false">
+import numpy as np
+
+x = np.linspace(0, 2 * np.pi, 200)
+plt.figure(figsize=(6, 3.5))
+plt.plot(x, np.sin(x), color="#4cc9f0", label="sin")
+plt.plot(x, np.cos(x), color="#80ffdb", label="cos")
+plt.xlabel("x")
+plt.ylabel("y")
+plt.title("Matplotlib demo")
+plt.legend()
+plt.grid(True, alpha=0.3)</textarea
+            >
+            <div id="preview" class="mplPreview"></div>
+          </div>
+          <div class="panel__footer">
+            <div id="status" class="status">
+              Tip: SVG export is always the sharpest. PNG export uses your
+              selected scale. First render downloads Python + NumPy +
+              Matplotlib (one-time).
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/pyodide/v0.26.2/full/pyodide.js"></script>
+    <script>
+      const renderBtn = document.getElementById("renderBtn");
+      const svgBtn = document.getElementById("svgBtn");
+      const pngBtn = document.getElementById("pngBtn");
+      const folderBtn = document.getElementById("folderBtn");
+      const fileName = document.getElementById("fileName");
+      const pngScale = document.getElementById("pngScale");
+      const pyInput = document.getElementById("pyInput");
+      const preview = document.getElementById("preview");
+      const status = document.getElementById("status");
+      let downloadDirHandle = null;
+      let pyodidePromise = null;
+
+      function setStatus(summary, details) {
+        status.innerHTML = "";
+        const summaryEl = document.createElement("div");
+        summaryEl.textContent = summary;
+        status.appendChild(summaryEl);
+        if (details) {
+          const pre = document.createElement("pre");
+          pre.className = "statusDetails";
+          pre.textContent = details;
+          status.appendChild(pre);
+        }
+      }
+
+      function escapeHtml(str) {
+        return String(str)
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;")
+          .replaceAll("'", "&#039;");
+      }
+
+      function safeSlice(text, maxChars) {
+        const s = String(text ?? "");
+        if (s.length <= maxChars) return s;
+        return s.slice(0, maxChars) + "\n...[truncated]";
+      }
+
+      function stringifyErrorDetails(err) {
+        if (err == null) return "Unknown error (null/undefined).";
+        if (typeof err === "string") return err;
+        if (err instanceof Error) {
+          const parts = [];
+          parts.push(`Name: ${err.name || "Error"}`);
+          parts.push(`Message: ${err.message || "(empty message)"}`);
+          if (err.stack) parts.push(`Stack:\n${err.stack}`);
+          return parts.join("\n");
+        }
+        try {
+          return `Thrown value: ${JSON.stringify(err, null, 2)}`;
+        } catch {
+          return `Thrown value (unserializable): ${String(err)}`;
+        }
+      }
+
+      function pyodideErrorToMessage(err) {
+        if (!err) return "Unknown error.";
+        const m = err.message || String(err);
+        if (typeof m === "string" && m.trim()) return m.trim();
+        return String(err);
+      }
+
+      async function ensurePyodide() {
+        if (!pyodidePromise) {
+          if (typeof loadPyodide !== "function") {
+            throw new Error(
+              "Pyodide failed to load from CDN. Check network connectivity to cdn.jsdelivr.net.",
+            );
+          }
+          pyodidePromise = (async () => {
+            setStatus("Loading Pyodide (Python in the browser)…");
+            const pyodide = await loadPyodide({
+              indexURL: "https://cdn.jsdelivr.net/pyodide/v0.26.2/full/",
+            });
+            setStatus("Loading NumPy and Matplotlib (first run only)…");
+            await pyodide.loadPackage(["numpy", "matplotlib"]);
+            return pyodide;
+          })();
+        }
+        return pyodidePromise;
+      }
+
+      function safeBaseFileName() {
+        const raw = String(fileName.value || "").trim();
+        const cleaned = raw
+          .replace(/[<>:"/\\|?*\x00-\x1f]/g, "-")
+          .replace(/\.+$/g, "")
+          .trim();
+        const base = cleaned || "plot";
+        fileName.value = base;
+        return base;
+      }
+
+      function downloadBlob(blob, filename) {
+        const u = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = u;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(u), 8000);
+      }
+
+      async function saveBlobToSelectedFolder(blob, filename) {
+        if (!downloadDirHandle) return false;
+        const fileHandle = await downloadDirHandle.getFileHandle(filename, {
+          create: true,
+        });
+        const writable = await fileHandle.createWritable();
+        await writable.write(blob);
+        await writable.close();
+        return true;
+      }
+
+      function assertLooksLikeSvg(svgText, context) {
+        if (!/<svg\b/i.test(svgText)) {
+          const err = new Error(
+            `Matplotlib did not produce SVG${context ? " (" + context + ")" : ""}.`,
+          );
+          err.snippet = safeSlice(svgText, 500);
+          throw err;
+        }
+      }
+
+      function renderErrorInPreview(err) {
+        const details = stringifyErrorDetails(err);
+        const safe = escapeHtml(details);
+        preview.innerHTML = `
+          <div class="mplErrorBox">
+            <div class="mplErrorBox__title">Error</div>
+            <pre class="mplErrorBox__pre">${safe}</pre>
+          </div>
+        `;
+      }
+
+      async function renderToSvgText() {
+        const src = String(pyInput.value || "").trim();
+        if (!src) throw new Error("Python code is empty.");
+
+        const pyodide = await ensurePyodide();
+        pyodide.globals.set("USER_CODE", src);
+
+        try {
+          await pyodide.runPythonAsync(`
+import io
+import matplotlib
+matplotlib.use("module://matplotlib.backends.backend_agg")
+import matplotlib.pyplot as plt
+import numpy as np
+
+plt.close("all")
+ns = {"plt": plt, "np": np, "numpy": np, "matplotlib": matplotlib}
+exec(USER_CODE, ns)
+fig = plt.gcf()
+buf = io.BytesIO()
+fig.savefig(buf, format="svg", bbox_inches="tight")
+svg_out = buf.getvalue().decode("utf-8")
+plt.close("all")
+`);
+        } catch (e) {
+          const msg = pyodideErrorToMessage(e);
+          const err = new Error(msg || "Python execution failed.");
+          if (e && typeof e === "object") err.cause = e;
+          throw err;
+        }
+
+        const svgText = pyodide.globals.get("svg_out");
+        if (typeof svgText !== "string" || !svgText.trim()) {
+          throw new Error("Matplotlib produced no SVG output.");
+        }
+        assertLooksLikeSvg(svgText, "");
+        return svgText;
+      }
+
+      async function renderPreview() {
+        try {
+          const svgText = await renderToSvgText();
+          preview.innerHTML = svgText;
+          setStatus("Rendered successfully.");
+        } catch (e) {
+          console.error(e);
+          renderErrorInPreview(e);
+          const details = stringifyErrorDetails(e);
+          const summary =
+            e && typeof e === "object" && "message" in e && e.message
+              ? `Render failed: ${e.message}`
+              : `Render failed.`;
+          setStatus(summary, details);
+        }
+      }
+
+      async function exportSvg() {
+        try {
+          const svgText = await renderToSvgText();
+          const svgBlob = new Blob([svgText], {
+            type: "image/svg+xml;charset=utf-8",
+          });
+          const base = safeBaseFileName();
+          const filename = `${base}.svg`;
+          const saved = await saveBlobToSelectedFolder(svgBlob, filename);
+          if (saved) setStatus(`SVG saved to selected folder as ${filename}.`);
+          else {
+            downloadBlob(svgBlob, filename);
+            setStatus("SVG downloaded (vector, best clarity).");
+          }
+        } catch (e) {
+          console.error(e);
+          renderErrorInPreview(e);
+          const details = stringifyErrorDetails(e);
+          const summary =
+            e && typeof e === "object" && "message" in e && e.message
+              ? `SVG export failed: ${e.message}`
+              : `SVG export failed.`;
+          setStatus(summary, details);
+        }
+      }
+
+      async function exportPng() {
+        try {
+          const base = safeBaseFileName();
+          const scale = Math.max(1, Math.min(16, Number(pngScale.value) || 4));
+          pngScale.value = String(scale);
+
+          const svgText = await renderToSvgText();
+          const svgBlob = new Blob([svgText], {
+            type: "image/svg+xml;charset=utf-8",
+          });
+          const svgUrl = URL.createObjectURL(svgBlob);
+          const img = new Image();
+
+          await new Promise((resolve, reject) => {
+            img.onload = resolve;
+            img.onerror = () => {
+              const err = new Error(
+                "Failed to rasterize SVG to PNG (image load error).",
+              );
+              err.snippet = safeSlice(svgText, 800);
+              reject(err);
+            };
+            img.src = svgUrl;
+          });
+
+          const w = Math.max(1, Math.round(img.width * scale));
+          const h = Math.max(1, Math.round(img.height * scale));
+          const canvas = document.createElement("canvas");
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext("2d");
+          if (!ctx) throw new Error("Canvas is not available.");
+
+          ctx.setTransform(scale, 0, 0, scale, 0, 0);
+          ctx.drawImage(img, 0, 0);
+          URL.revokeObjectURL(svgUrl);
+
+          const blob = await new Promise((resolve) =>
+            canvas.toBlob(resolve, "image/png"),
+          );
+          if (!blob) throw new Error("Could not create PNG.");
+          const filename = `${base}.png`;
+          const saved = await saveBlobToSelectedFolder(blob, filename);
+          if (saved) {
+            setStatus(`PNG saved to selected folder as ${filename} (${scale}x).`);
+          } else {
+            downloadBlob(blob, filename);
+            setStatus(`PNG downloaded at ${scale}x scale.`);
+          }
+        } catch (e) {
+          console.error(e);
+          renderErrorInPreview(e);
+          const details = stringifyErrorDetails(e);
+          const summary =
+            e && typeof e === "object" && "message" in e && e.message
+              ? `PNG export failed: ${e.message}`
+              : `PNG export failed.`;
+          setStatus(summary, details);
+        }
+      }
+
+      renderBtn.addEventListener("click", renderPreview);
+      svgBtn.addEventListener("click", exportSvg);
+      pngBtn.addEventListener("click", exportPng);
+      folderBtn.addEventListener("click", async () => {
+        try {
+          if (!window.isSecureContext) {
+            setStatus(
+              "Folder picker unavailable in an insecure context.",
+              "This feature requires a secure context. Use https:// or run on localhost (not a plain file:// path).",
+            );
+            return;
+          }
+          if (!window.showDirectoryPicker) {
+            setStatus(
+              "Folder picker is not supported in this browser.",
+              "Use a Chromium-based browser (Microsoft Edge / Google Chrome). If you can't, exports will still download normally without choosing a folder.",
+            );
+            return;
+          }
+          downloadDirHandle = await window.showDirectoryPicker({
+            mode: "readwrite",
+          });
+          const folderName =
+            downloadDirHandle && downloadDirHandle.name
+              ? downloadDirHandle.name
+              : "selected folder";
+          setStatus(`Download folder selected: ${folderName}`);
+        } catch (e) {
+          if (e && e.name === "AbortError") {
+            setStatus("Folder selection canceled.");
+            return;
+          }
+          console.error(e);
+          const details = stringifyErrorDetails(e);
+          const summary =
+            e && typeof e === "object" && "message" in e && e.message
+              ? `Folder selection failed: ${e.message}`
+              : `Folder selection failed.`;
+          setStatus(summary, details);
+        }
+      });
+
+      pyInput.addEventListener("keydown", (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+          e.preventDefault();
+          renderPreview();
+        }
+      });
+
+      renderPreview();
+    </script>
+  </body>
+</html>
