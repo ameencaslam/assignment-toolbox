@@ -465,6 +465,7 @@ function setup() {
   const applyToNextBtn = document.getElementById("applyToNextBtn");
   const printedSizeLabel = document.getElementById("printedSizeLabel");
   const clampedLabel = document.getElementById("clampedLabel");
+  const filenameLabel = document.getElementById("filenameLabel");
 
   const marginCm = document.getElementById("marginCm");
   const gutterCm = document.getElementById("gutterCm");
@@ -553,6 +554,9 @@ function setup() {
     if (!img) return;
     setText(idxLabel, String(state.idx + 1));
     setText(totalLabel, String(state.images.length));
+
+    const nameWithoutExt = img.name.replace(/\.[^/.]+$/, "");
+    setText(filenameLabel, nameWithoutExt);
 
     stageImg.src = img.dataUrl;
     stageImg.style.transformOrigin = "center center";
