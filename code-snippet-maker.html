@@ -27,6 +27,25 @@
               <input id="fileName" type="text" value="snippet" />
             </label>
             <label class="snippetField">
+              <span class="snippetLabel">Font size (px)</span>
+              <input
+                id="fontSize"
+                type="number"
+                min="9"
+                max="40"
+                step="1"
+                value="14"
+              />
+            </label>
+            <label class="snippetField">
+              <span class="snippetLabel">Wrap mode</span>
+              <select id="wrapMode">
+                <option value="off">No wrap</option>
+                <option value="soft">Wrap lines</option>
+                <option value="a4">Wrap to A4 width</option>
+              </select>
+            </label>
+            <label class="snippetField">
               <span class="snippetLabel">PNG scale</span>
               <input
                 id="pngScale"
@@ -37,19 +56,25 @@
                 value="4"
               />
             </label>
+            <label class="snippetField snippetField--check">
+              <input id="splitA4" type="checkbox" />
+              <span class="snippetLabel">Split by A4 height</span>
+            </label>
             <button id="renderBtn" class="btn" type="button">Render</button>
             <button id="downloadBtn" class="btn btn--primary" type="button">
               Export PNG
             </button>
           </div>
-          <textarea id="codeInput" class="snippetEditor" spellcheck="false">#include &lt;stdio.h&gt;
+          <textarea id="codeInput" class="snippetEditor" spellcheck="false">
+#include &lt;stdio.h&gt;
 
 // this is a comment
 int main() {
   printf("Hello\n");
   /* block comment */
   return 0;
-}</textarea>
+}</textarea
+          >
         </section>
 
         <section class="panel">
@@ -78,6 +103,9 @@ int main() {
       const downloadBtn = document.getElementById("downloadBtn");
       const fileName = document.getElementById("fileName");
       const pngScale = document.getElementById("pngScale");
+      const fontSize = document.getElementById("fontSize");
+      const wrapMode = document.getElementById("wrapMode");
+      const splitA4 = document.getElementById("splitA4");
       const status = document.getElementById("status");
 
       function esc(s) {
@@ -93,7 +121,8 @@ int main() {
         const blockIdx = line.indexOf("/*");
         const slashIdx = line.indexOf("//");
         let commentStart = -1;
-        if (blockIdx >= 0 && slashIdx >= 0) commentStart = Math.min(blockIdx, slashIdx);
+        if (blockIdx >= 0 && slashIdx >= 0)
+          commentStart = Math.min(blockIdx, slashIdx);
         else commentStart = Math.max(blockIdx, slashIdx);
         if (commentStart < 0) return esc(line);
         const before = esc(line.slice(0, commentStart));
@@ -112,10 +141,43 @@ int main() {
         return base;
       }
 
+      function loadImageFromDataUrl(dataUrl) {
+        return new Promise((resolve, reject) => {
+          const img = new Image();
+          img.onload = () => resolve(img);
+          img.onerror = () =>
+            reject(new Error("Unable to read rendered PNG for slicing."));
+          img.src = dataUrl;
+        });
+      }
+
+      function triggerDownload(dataUrl, filename) {
+        const a = document.createElement("a");
+        a.href = dataUrl;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+      }
+
       function render() {
         const code = String(codeInput.value || "");
-        previewCode.innerHTML = code.split("\n").map(highlightComments).join("\n");
-        status.textContent = "Rendered.";
+        const px = Math.max(9, Math.min(40, Number(fontSize.value) || 14));
+        const mode = ["off", "soft", "a4"].includes(wrapMode.value)
+          ? wrapMode.value
+          : "off";
+        const useWrap = mode !== "off";
+        const useA4Wrap = mode === "a4";
+        fontSize.value = String(px);
+        codeInput.style.fontSize = `${px}px`;
+        previewCode.style.fontSize = `${px}px`;
+        capture.classList.toggle("is-wrap", useWrap);
+        capture.classList.toggle("is-a4-wrap", useA4Wrap);
+        previewCode.innerHTML = code
+          .split("\n")
+          .map(highlightComments)
+          .join("\n");
+        status.textContent = `Rendered (${px}px, ${mode === "a4" ? "A4 wrap" : mode === "soft" ? "wrap" : "no wrap"}).`;
       }
 
       async function exportPng() {
@@ -128,13 +190,48 @@ int main() {
             pixelRatio: scale,
             cacheBust: true,
           });
-          const a = document.createElement("a");
-          a.href = dataUrl;
-          a.download = `${base}.png`;
-          document.body.appendChild(a);
-          a.click();
-          a.remove();
-          status.textContent = `Exported ${base}.png (${scale}x resolution).`;
+          const shouldSplit = !!splitA4.checked;
+          if (!shouldSplit) {
+            triggerDownload(dataUrl, `${base}.png`);
+            status.textContent = `Exported ${base}.png (${scale}x resolution).`;
+            return;
+          }
+
+          const img = await loadImageFromDataUrl(dataUrl);
+          const a4HeightPx = Math.max(1, Math.round((img.width * 29.7) / 21));
+          const pageMarginPx = Math.max(8, Math.round((img.width * 0.6) / 21));
+          if (img.height <= a4HeightPx) {
+            triggerDownload(dataUrl, `${base}.png`);
+            status.textContent = `Exported ${base}.png (fits one A4 page).`;
+            return;
+          }
+
+          const contentHeightPerPage = Math.max(1, a4HeightPx - pageMarginPx * 2);
+          const pageCount = Math.ceil(img.height / contentHeightPerPage);
+          for (let i = 0; i < pageCount; i += 1) {
+            const y = i * contentHeightPerPage;
+            const sliceHeight = Math.min(contentHeightPerPage, img.height - y);
+            const canvas = document.createElement("canvas");
+            canvas.width = img.width;
+            canvas.height = sliceHeight + pageMarginPx * 2;
+            const ctx = canvas.getContext("2d");
+            ctx.fillStyle = "#fafbfc";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(
+              img,
+              0,
+              y,
+              img.width,
+              sliceHeight,
+              0,
+              pageMarginPx,
+              img.width,
+              sliceHeight
+            );
+            const sliceUrl = canvas.toDataURL("image/png");
+            triggerDownload(sliceUrl, `${base}-p${i + 1}.png`);
+          }
+          status.textContent = `Exported ${pageCount} PNG files (${base}-p1 ... ${base}-p${pageCount}) at ${scale}x with split margins.`;
         } catch (e) {
           console.error(e);
           status.textContent = `Export failed: ${e.message || String(e)}`;
@@ -144,6 +241,8 @@ int main() {
       renderBtn.addEventListener("click", render);
       downloadBtn.addEventListener("click", exportPng);
       codeInput.addEventListener("input", render);
+      fontSize.addEventListener("input", render);
+      wrapMode.addEventListener("change", render);
       render();
     </script>
   </body>
