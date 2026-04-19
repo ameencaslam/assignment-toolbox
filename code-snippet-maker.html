@@ -80,7 +80,7 @@ int main() {
         <section class="panel">
           <div class="panel__title">Preview</div>
           <div class="snippetPreviewWrap">
-            <div id="capture">
+            <div id="capture" class="snippetCapture">
               <pre id="previewCode"></pre>
             </div>
           </div>
@@ -141,16 +141,6 @@ int main() {
         return base;
       }
 
-      function loadImageFromDataUrl(dataUrl) {
-        return new Promise((resolve, reject) => {
-          const img = new Image();
-          img.onload = () => resolve(img);
-          img.onerror = () =>
-            reject(new Error("Unable to read rendered PNG for slicing."));
-          img.src = dataUrl;
-        });
-      }
-
       function triggerDownload(dataUrl, filename) {
         const a = document.createElement("a");
         a.href = dataUrl;
@@ -173,11 +163,158 @@ int main() {
         previewCode.style.fontSize = `${px}px`;
         capture.classList.toggle("is-wrap", useWrap);
         capture.classList.toggle("is-a4-wrap", useA4Wrap);
-        previewCode.innerHTML = code
-          .split("\n")
-          .map(highlightComments)
-          .join("\n");
+        const lines = code.split("\n");
+        previewCode.innerHTML = lines
+          .map(
+            (line) =>
+              `<span class="snippetLine">${highlightComments(line)}</span>`
+          )
+          .join("");
         status.textContent = `Rendered (${px}px, ${mode === "a4" ? "A4 wrap" : mode === "soft" ? "wrap" : "no wrap"}).`;
+      }
+
+      function getMeasureRoot() {
+        let root = document.getElementById("snippetMeasureRoot");
+        if (!root) {
+          root = document.createElement("div");
+          root.id = "snippetMeasureRoot";
+          root.setAttribute("aria-hidden", "true");
+          root.style.cssText =
+            "position:fixed;left:-10000px;top:0;visibility:hidden;pointer-events:none;";
+          document.body.appendChild(root);
+        }
+        return root;
+      }
+
+      function syncMeasureCapture() {
+        const root = getMeasureRoot();
+        root.innerHTML = "";
+        const clone = capture.cloneNode(false);
+        clone.removeAttribute("id");
+        clone.className = capture.className;
+        clone.style.width = `${capture.offsetWidth}px`;
+        clone.style.boxSizing = "border-box";
+        const pre = document.createElement("pre");
+        pre.className = previewCode.className;
+        if (previewCode.style.fontSize) {
+          pre.style.fontSize = previewCode.style.fontSize;
+        }
+        clone.appendChild(pre);
+        root.appendChild(clone);
+        return pre;
+      }
+
+      function measureSliceHeight(text) {
+        const pre = syncMeasureCapture();
+        pre.innerHTML = `<span class="snippetLine">${highlightComments(text)}</span>`;
+        const span = pre.querySelector(".snippetLine");
+        return span ? span.offsetHeight : 0;
+      }
+
+      function splitLongLine(lineStr, budgetPx) {
+        const chunks = [];
+        let start = 0;
+        while (start < lineStr.length) {
+          let low = start + 1;
+          let high = lineStr.length;
+          let fitEnd = start;
+          while (low <= high) {
+            const mid = Math.floor((low + high) / 2);
+            const h = measureSliceHeight(lineStr.slice(start, mid));
+            if (h <= budgetPx) {
+              fitEnd = mid;
+              low = mid + 1;
+            } else {
+              high = mid - 1;
+            }
+          }
+          if (fitEnd === start) {
+            fitEnd = start + 1;
+          }
+          chunks.push([start, fitEnd]);
+          start = fitEnd;
+        }
+        return chunks;
+      }
+
+      function spanBandInPre(span) {
+        const pr = previewCode.getBoundingClientRect();
+        const r = span.getBoundingClientRect();
+        return { top: r.top - pr.top, bottom: r.bottom - pr.top };
+      }
+
+      function buildSplitTasks(spans, sourceLines, budgetPx) {
+        const tasks = [];
+        let i = 0;
+        const n = spans.length;
+        while (i < n) {
+          if (spans[i].offsetHeight > budgetPx + 0.5) {
+            for (const [a, b] of splitLongLine(sourceLines[i], budgetPx)) {
+              tasks.push([{ line: i, from: a, to: b }]);
+            }
+            i += 1;
+            continue;
+          }
+          const pageTop = spanBandInPre(spans[i]).top;
+          let j = i;
+          while (j < n) {
+            if (spans[j].offsetHeight > budgetPx + 0.5) {
+              break;
+            }
+            const band = spanBandInPre(spans[j]);
+            if (band.bottom - pageTop > budgetPx + 0.5) {
+              break;
+            }
+            j += 1;
+          }
+          if (j === i) {
+            j = i + 1;
+          }
+          const parts = [];
+          for (let k = i; k < j; k += 1) {
+            parts.push({ line: k });
+          }
+          tasks.push(parts);
+          i = j;
+        }
+        return tasks;
+      }
+
+      function htmlForParts(parts, sourceLines) {
+        return parts
+          .map((p) => {
+            const raw = sourceLines[p.line];
+            const text =
+              p.from !== undefined ? raw.slice(p.from, p.to) : raw;
+            return `<span class="snippetLine">${highlightComments(text)}</span>`;
+          })
+          .join("");
+      }
+
+      function makeExportNode(parts, sourceLines, pageMarginPx) {
+        const wrap = document.createElement("div");
+        wrap.style.background = "#fafbfc";
+        wrap.style.padding = `${pageMarginPx}px 0`;
+        wrap.style.display = "inline-block";
+        const clone = capture.cloneNode(false);
+        clone.removeAttribute("id");
+        clone.className = capture.className;
+        clone.style.width = `${capture.offsetWidth}px`;
+        clone.style.boxSizing = "border-box";
+        const pre = document.createElement("pre");
+        pre.className = previewCode.className;
+        if (previewCode.style.fontSize) {
+          pre.style.fontSize = previewCode.style.fontSize;
+        }
+        pre.innerHTML = htmlForParts(parts, sourceLines);
+        clone.appendChild(pre);
+        wrap.appendChild(clone);
+        const shell = document.createElement("div");
+        shell.style.cssText =
+          "position:fixed;left:-10000px;top:0;pointer-events:none;";
+        shell.appendChild(wrap);
+        document.body.appendChild(shell);
+        return { shell, node: wrap };
       }
 
       async function exportPng() {
@@ -185,53 +322,74 @@ int main() {
           const base = safeBaseFileName();
           const scale = Math.max(1, Math.min(16, Number(pngScale.value) || 4));
           pngScale.value = String(scale);
-          const dataUrl = await window.htmlToImage.toPng(capture, {
-            backgroundColor: "#fafbfc",
-            pixelRatio: scale,
-            cacheBust: true,
-          });
           const shouldSplit = !!splitA4.checked;
           if (!shouldSplit) {
+            const dataUrl = await window.htmlToImage.toPng(capture, {
+              backgroundColor: "#fafbfc",
+              pixelRatio: scale,
+              cacheBust: true,
+            });
             triggerDownload(dataUrl, `${base}.png`);
             status.textContent = `Exported ${base}.png (${scale}x resolution).`;
             return;
           }
 
-          const img = await loadImageFromDataUrl(dataUrl);
-          const a4HeightPx = Math.max(1, Math.round((img.width * 29.7) / 21));
-          const pageMarginPx = Math.max(8, Math.round((img.width * 0.6) / 21));
-          if (img.height <= a4HeightPx) {
-            triggerDownload(dataUrl, `${base}.png`);
-            status.textContent = `Exported ${base}.png (fits one A4 page).`;
+          render();
+
+          const w = capture.offsetWidth;
+          const a4HeightPx = Math.max(1, (w * 29.7) / 21);
+          const pageMarginPx = Math.max(8, Math.round((w * 0.6) / 21));
+          const budgetPx = Math.max(1, a4HeightPx - pageMarginPx * 2);
+
+          const sourceLines = String(codeInput.value || "").split("\n");
+          const spans = [...previewCode.querySelectorAll(".snippetLine")];
+          if (spans.length !== sourceLines.length) {
+            render();
+          }
+          const spans2 = [...previewCode.querySelectorAll(".snippetLine")];
+          if (spans2.length !== sourceLines.length) {
+            throw new Error("Preview line count mismatch; try Render again.");
+          }
+
+          const tasks = buildSplitTasks(spans2, sourceLines, budgetPx);
+          if (tasks.length === 1) {
+            const { shell, node } = makeExportNode(
+              tasks[0],
+              sourceLines,
+              pageMarginPx
+            );
+            try {
+              const dataUrl = await window.htmlToImage.toPng(node, {
+                backgroundColor: "#fafbfc",
+                pixelRatio: scale,
+                cacheBust: true,
+              });
+              triggerDownload(dataUrl, `${base}.png`);
+              status.textContent = `Exported ${base}.png (fits one A4 page).`;
+            } finally {
+              shell.remove();
+            }
             return;
           }
 
-          const contentHeightPerPage = Math.max(1, a4HeightPx - pageMarginPx * 2);
-          const pageCount = Math.ceil(img.height / contentHeightPerPage);
-          for (let i = 0; i < pageCount; i += 1) {
-            const y = i * contentHeightPerPage;
-            const sliceHeight = Math.min(contentHeightPerPage, img.height - y);
-            const canvas = document.createElement("canvas");
-            canvas.width = img.width;
-            canvas.height = sliceHeight + pageMarginPx * 2;
-            const ctx = canvas.getContext("2d");
-            ctx.fillStyle = "#fafbfc";
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-            ctx.drawImage(
-              img,
-              0,
-              y,
-              img.width,
-              sliceHeight,
-              0,
-              pageMarginPx,
-              img.width,
-              sliceHeight
+          for (let p = 0; p < tasks.length; p += 1) {
+            const { shell, node } = makeExportNode(
+              tasks[p],
+              sourceLines,
+              pageMarginPx
             );
-            const sliceUrl = canvas.toDataURL("image/png");
-            triggerDownload(sliceUrl, `${base}-p${i + 1}.png`);
+            try {
+              const dataUrl = await window.htmlToImage.toPng(node, {
+                backgroundColor: "#fafbfc",
+                pixelRatio: scale,
+                cacheBust: true,
+              });
+              triggerDownload(dataUrl, `${base}-p${p + 1}.png`);
+            } finally {
+              shell.remove();
+            }
           }
-          status.textContent = `Exported ${pageCount} PNG files (${base}-p1 ... ${base}-p${pageCount}) at ${scale}x with split margins.`;
+          status.textContent = `Exported ${tasks.length} PNG files (${base}-p1 ... ${base}-p${tasks.length}) — breaks at line boundaries.`;
         } catch (e) {
           console.error(e);
           status.textContent = `Export failed: ${e.message || String(e)}`;

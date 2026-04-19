@@ -1018,7 +1018,8 @@ input[type="range"] {
   color-scheme: light;
 }
 
-#capture {
+#capture,
+.snippetCapture {
   display: inline-block;
   max-width: 100%;
   box-sizing: border-box;
@@ -1027,7 +1028,8 @@ input[type="range"] {
   color-scheme: light;
 }
 
-#capture pre {
+#capture pre,
+.snippetCapture pre {
   margin: 0;
   color: #0a0a0a;
   background: transparent;
@@ -1038,18 +1040,27 @@ input[type="range"] {
   width: max-content;
 }
 
-#capture.is-wrap pre {
+#capture pre .snippetLine,
+.snippetCapture pre .snippetLine {
+  display: block;
+  min-height: 1.45em;
+}
+
+#capture.is-wrap pre,
+.snippetCapture.is-wrap pre {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   word-break: break-word;
   width: 100%;
 }
 
-#capture.is-a4-wrap {
+#capture.is-a4-wrap,
+.snippetCapture.is-a4-wrap {
   width: 21cm;
   max-width: none;
 }
 
-#capture .comment {
+#capture .comment,
+.snippetCapture .comment {
   color: #6b7280;
 }
