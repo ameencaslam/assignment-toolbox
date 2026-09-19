@@ -729,6 +729,13 @@ input[type="range"] {
   font-size: 13px;
 }
 
+.setting input[type="checkbox"] {
+  width: auto;
+  height: 18px;
+  padding: 0;
+  accent-color: #5ee1ff;
+}
+
 .setting input:focus,
 .setting select:focus {
   outline: none;

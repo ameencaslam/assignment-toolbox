@@ -312,7 +312,159 @@ function packToA4(items, { marginCm, gutterCm, orientation }) {
   return { pages, page: { ...page, innerWCm, innerHCm, marginCm, gutterCm } };
 }
 
-async function rasterToPngBytes(file, rotate90) {
+function displayNameFromFileName(name) {
+  const base = String(name || "").replace(/\.[^/.]+$/, "").trim();
+  return base || "image";
+}
+
+function colorDist(a, b) {
+  const dr = a[0] - b[0];
+  const dg = a[1] - b[1];
+  const db = a[2] - b[2];
+  return Math.sqrt(dr * dr + dg * dg + db * db);
+}
+
+function sampleRectStats(ctx, x, y, w, h, bg) {
+  const rw = Math.max(1, Math.floor(w));
+  const rh = Math.max(1, Math.floor(h));
+  const rx = Math.max(0, Math.floor(x));
+  const ry = Math.max(0, Math.floor(y));
+  const img = ctx.getImageData(rx, ry, rw, rh);
+  const d = img.data;
+  const step = Math.max(1, Math.floor(Math.min(rw, rh) / 24));
+  let n = 0;
+  let content = 0;
+  let sumL = 0;
+  let sumL2 = 0;
+  let sumR = 0;
+  let sumG = 0;
+  let sumB = 0;
+  for (let py = 0; py < rh; py += step) {
+    for (let px = 0; px < rw; px += step) {
+      const i = (py * rw + px) * 4;
+      const r = d[i];
+      const g = d[i + 1];
+      const b = d[i + 2];
+      const l = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      n += 1;
+      sumL += l;
+      sumL2 += l * l;
+      sumR += r;
+      sumG += g;
+      sumB += b;
+      if (colorDist([r, g, b], bg) > 28) content += 1;
+    }
+  }
+  const meanL = n ? sumL / n : 0;
+  const varL = n ? Math.max(0, sumL2 / n - meanL * meanL) : 0;
+  return {
+    contentRatio: n ? content / n : 1,
+    variance: varL,
+    mean: n ? [sumR / n, sumG / n, sumB / n] : bg,
+  };
+}
+
+function estimateBackgroundColor(ctx, w, h) {
+  const s = Math.max(4, Math.min(12, Math.floor(Math.min(w, h) * 0.02)));
+  const patches = [
+    [2, 2],
+    [w - 2 - s, 2],
+    [2, h - 2 - s],
+    [w - 2 - s, h - 2 - s],
+  ];
+  const colors = patches.map(([x, y]) => {
+    const img = ctx.getImageData(Math.max(0, x), Math.max(0, y), s, s);
+    let r = 0;
+    let g = 0;
+    let b = 0;
+    const n = img.data.length / 4;
+    for (let i = 0; i < img.data.length; i += 4) {
+      r += img.data[i];
+      g += img.data[i + 1];
+      b += img.data[i + 2];
+    }
+    return [r / n, g / n, b / n];
+  });
+  // Median per channel so one busy corner does not pull the background.
+  const channel = (idx) =>
+    colors.map((c) => c[idx]).sort((a, b) => a - b)[Math.floor(colors.length / 2)];
+  return [channel(0), channel(1), channel(2)];
+}
+
+function fitLabelText(ctx, text, maxWidth) {
+  if (ctx.measureText(text).width <= maxWidth) return text;
+  let t = text;
+  while (t.length > 1 && ctx.measureText(`${t}…`).width > maxWidth) {
+    t = t.slice(0, -1);
+  }
+  return t.length ? `${t}…` : "";
+}
+
+function drawNameInEmptyCorner(ctx, w, h, label, printedWCm, printedHCm) {
+  const text = displayNameFromFileName(label);
+  if (!text || w < 24 || h < 24) return;
+
+  const targetCm = 0.16;
+  const fontPx = Math.max(
+    8,
+    Math.min(
+      28,
+      Math.round(((targetCm / Math.max(printedHCm || 1, 1)) * h) * 10) / 10,
+    ),
+  );
+  ctx.save();
+  ctx.font = `${fontPx}px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace`;
+  ctx.textBaseline = "top";
+
+  const inset = Math.max(6, Math.round(Math.min(w, h) * 0.014));
+  const maxBoxW = Math.min(w * 0.42, w - inset * 2);
+  const fitted = fitLabelText(ctx, text, maxBoxW);
+  if (!fitted) {
+    ctx.restore();
+    return;
+  }
+  const metrics = ctx.measureText(fitted);
+  const boxW = Math.min(maxBoxW, Math.ceil(metrics.width) + 2);
+  const boxH = Math.ceil(fontPx * 1.25);
+  if (boxW + inset * 2 > w || boxH + inset * 2 > h) {
+    ctx.restore();
+    return;
+  }
+
+  const bg = estimateBackgroundColor(ctx, w, h);
+  const clearPad = Math.max(10, Math.round(fontPx * 2));
+  const corners = [
+    { id: "br", x: w - inset - boxW, y: h - inset - boxH },
+    { id: "bl", x: inset, y: h - inset - boxH },
+    { id: "tr", x: w - inset - boxW, y: inset },
+    { id: "tl", x: inset, y: inset },
+  ];
+
+  let best = null;
+  for (const c of corners) {
+    const sx = Math.max(0, c.x - clearPad);
+    const sy = Math.max(0, c.y - clearPad);
+    const sw = Math.min(w - sx, boxW + clearPad * 2);
+    const sh = Math.min(h - sy, boxH + clearPad * 2);
+    const stats = sampleRectStats(ctx, sx, sy, sw, sh, bg);
+    const score = stats.contentRatio + stats.variance / 12000;
+    if (!best || score < best.score) best = { ...c, ...stats, score };
+  }
+
+  // Skip rather than cover ink / diagram pixels.
+  if (!best || best.contentRatio > 0.012 || best.variance > 420) {
+    ctx.restore();
+    return;
+  }
+
+  const lum = 0.2126 * bg[0] + 0.7152 * bg[1] + 0.0722 * bg[2];
+  ctx.fillStyle =
+    lum > 140 ? "rgba(70, 74, 82, 0.72)" : "rgba(230, 232, 236, 0.78)";
+  ctx.fillText(fitted, best.x, best.y);
+  ctx.restore();
+}
+
+async function rasterToPngBytes(file, rotate90, labelOpts) {
   const dataUrl = await fileToDataUrl(file);
   const img = new Image();
   await new Promise((resolve, reject) => {
@@ -331,10 +483,22 @@ async function rasterToPngBytes(file, rotate90) {
     ctx.translate(canvas.width, 0);
     ctx.rotate(Math.PI / 2);
     ctx.drawImage(img, 0, 0);
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
   } else {
     canvas.width = img.naturalWidth;
     canvas.height = img.naturalHeight;
     ctx.drawImage(img, 0, 0);
+  }
+
+  if (labelOpts && labelOpts.enabled) {
+    drawNameInEmptyCorner(
+      ctx,
+      canvas.width,
+      canvas.height,
+      labelOpts.name,
+      labelOpts.wCm,
+      labelOpts.hCm,
+    );
   }
 
   const blob = await new Promise((resolve) =>
@@ -352,6 +516,7 @@ async function exportPdf(state) {
   const gutterCm = Number(state.gutterCm.value || 0.3);
   const orientation = state.orientation.value;
   const borderMode = state.borderMode.value;
+  const cornerNameLabel = Boolean(state.cornerNameLabel?.checked);
 
   const packed = packToA4(state.images, { marginCm, gutterCm, orientation });
   if (packed.pages.length === 0) throw new Error("Nothing to export");
@@ -369,10 +534,15 @@ async function exportPdf(state) {
     const page = pdfDoc.addPage([pageWPt, pageHPt]);
 
     for (const placed of pageItems) {
-      const key = `${placed.item.id}:${placed.rotate90 ? "r90" : "r0"}`;
+      const key = `${placed.item.id}:${placed.rotate90 ? "r90" : "r0"}:${cornerNameLabel ? "n" : "x"}`;
       let pngBytes = pngCache.get(key);
       if (!pngBytes) {
-        pngBytes = await rasterToPngBytes(placed.item.file, placed.rotate90);
+        pngBytes = await rasterToPngBytes(placed.item.file, placed.rotate90, {
+          enabled: cornerNameLabel,
+          name: placed.item.name,
+          wCm: placed.wCm,
+          hCm: placed.hCm,
+        });
         pngCache.set(key, pngBytes);
       }
       const embedded = await pdfDoc.embedPng(pngBytes);
@@ -471,6 +641,7 @@ function setup() {
   const gutterCm = document.getElementById("gutterCm");
   const orientation = document.getElementById("orientation");
   const borderMode = document.getElementById("borderMode");
+  const cornerNameLabel = document.getElementById("cornerNameLabel");
   const status = document.getElementById("status");
   const clearSavedBtn = document.getElementById("clearSavedBtn");
 
@@ -482,6 +653,7 @@ function setup() {
     gutterCm,
     orientation,
     borderMode,
+    cornerNameLabel,
     imageSettings: getImageSettingsMap(),
   };
 

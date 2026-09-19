@@ -167,7 +167,7 @@ int main() {
         previewCode.innerHTML = lines
           .map(
             (line) =>
-              `<span class="snippetLine">${highlightComments(line)}</span>`
+              `<span class="snippetLine">${highlightComments(line)}</span>`,
           )
           .join("");
         status.textContent = `Rendered (${px}px, ${mode === "a4" ? "A4 wrap" : mode === "soft" ? "wrap" : "no wrap"}).`;
@@ -284,8 +284,7 @@ int main() {
         return parts
           .map((p) => {
             const raw = sourceLines[p.line];
-            const text =
-              p.from !== undefined ? raw.slice(p.from, p.to) : raw;
+            const text = p.from !== undefined ? raw.slice(p.from, p.to) : raw;
             return `<span class="snippetLine">${highlightComments(text)}</span>`;
           })
           .join("");
@@ -356,7 +355,7 @@ int main() {
             const { shell, node } = makeExportNode(
               tasks[0],
               sourceLines,
-              pageMarginPx
+              pageMarginPx,
             );
             try {
               const dataUrl = await window.htmlToImage.toPng(node, {
@@ -376,7 +375,7 @@ int main() {
             const { shell, node } = makeExportNode(
               tasks[p],
               sourceLines,
-              pageMarginPx
+              pageMarginPx,
             );
             try {
               const dataUrl = await window.htmlToImage.toPng(node, {
