@@ -404,14 +404,114 @@ function drawNameInEmptyCorner(ctx, w, h, label, printedWCm, printedHCm, targetC
   const text = displayNameFromFileName(label);
   if (!text || w < 24 || h < 24) return;
 
-  const sizeCm = typeof targetCm === "number" && !Number.isNaN(targetCm) ? targetCm : 0.16;
-  const fontPx = Math.max(
+  const parsedSize = Number(targetCm);
+  const isMaxMode = targetCm === "max" || targetCm === -1;
+  const isMax2Mode = targetCm === "max2";
+  const isMax3Mode = targetCm === "max3";
+  const isAutoMaxMode = isMaxMode || isMax2Mode || isMax3Mode;
+  let baseSizeCm = Number.isFinite(parsedSize) && !isAutoMaxMode ? parsedSize : 0.16;
+  const bg = estimateBackgroundColor(ctx, w, h);
+  const corners = [
+    { id: "br", x: (w) => w, y: (h) => h }, // bottom-right
+    { id: "bl", x: () => 0, y: (h) => h }, // bottom-left
+    { id: "tr", x: (w) => w, y: () => 0 }, // top-right
+    { id: "tl", x: () => 0, y: () => 0 }, // top-left
+  ];
+
+  if (isAutoMaxMode) {
+    let bestMax = null;
+    for (const corner of corners) {
+      // Try different sizes to find maximum
+      for (let testSize = 0.8; testSize >= 0.02; testSize -= 0.01) {
+        let fontPx = Math.max(
+          8,
+          Math.min(
+            200,
+            Math.round(((testSize / Math.max(printedHCm || 1, 1)) * h) * 10) / 10,
+          ),
+        );
+        fontPx = Math.max(8, Math.min(200, fontPx));
+        ctx.save();
+        ctx.font = `${fontPx}px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace`;
+        ctx.textBaseline = "top";
+        const inset = Math.max(4, Math.round(Math.min(w, h) * 0.01));
+        const maxBoxW = Math.min(w * 0.8, w - inset * 2);
+        const fitted = fitLabelText(ctx, text, maxBoxW);
+        if (!fitted) {
+          ctx.restore();
+          continue;
+        }
+        const metrics = ctx.measureText(fitted);
+        const boxW = Math.min(maxBoxW, Math.ceil(metrics.width) + 2);
+        const boxH = Math.ceil(fontPx * 1.25);
+        if (boxW + inset * 2 > w || boxH + inset * 2 > h) {
+          ctx.restore();
+          continue;
+        }
+        let cx, cy;
+        if (corner.id === "br") { cx = w - inset - boxW; cy = h - inset - boxH; }
+        else if (corner.id === "bl") { cx = inset; cy = h - inset - boxH; }
+        else if (corner.id === "tr") { cx = w - inset - boxW; cy = inset; }
+        else { cx = inset; cy = inset; }
+        const clearPad = Math.max(10, Math.round(fontPx * 2));
+        const sx = Math.max(0, cx - clearPad);
+        const sy = Math.max(0, cy - clearPad);
+        const sw = Math.min(w - sx, boxW + clearPad * 2);
+        const sh = Math.min(h - sy, boxH + clearPad * 2);
+        const stats = sampleRectStats(ctx, sx, sy, sw, sh, bg);
+        ctx.restore();
+        if (stats.contentRatio > 0.012 || stats.variance > 420) {
+          continue;
+        }
+        if (!bestMax || fontPx > bestMax.fontPx || (fontPx === bestMax.fontPx && testSize > bestMax.sizeCm)) {
+          bestMax = { fontPx, sizeCm: testSize, cx, cy, fitted, corner: corner.id, stats };
+        }
+        break; // found good size for this corner, try larger on others
+      }
+    }
+    if (!bestMax) {
+      return;
+    }
+    let fontPxFinal = bestMax.fontPx;
+    if (isMax2Mode) fontPxFinal = bestMax.fontPx / 2;
+    if (isMax3Mode) fontPxFinal = bestMax.fontPx / 3;
+    fontPxFinal = Math.max(6, Math.round(fontPxFinal));
+    ctx.save();
+    ctx.font = `${fontPxFinal}px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace`;
+    ctx.textBaseline = "top";
+    // Recompute position for scaled font if needed
+    const inset = Math.max(4, Math.round(Math.min(w, h) * 0.01));
+    const maxBoxW = Math.min(w * 0.8, w - inset * 2);
+    const fittedScaled = fitLabelText(ctx, text, maxBoxW);
+    if (fittedScaled) {
+      const metrics = ctx.measureText(fittedScaled);
+      const boxW = Math.min(maxBoxW, Math.ceil(metrics.width) + 2);
+      const boxH = Math.ceil(fontPxFinal * 1.25);
+      let cx = bestMax.cx, cy = bestMax.cy;
+      if (bestMax.corner === "br") { cx = w - inset - boxW; cy = h - inset - boxH; }
+      else if (bestMax.corner === "bl") { cx = inset; cy = h - inset - boxH; }
+      else if (bestMax.corner === "tr") { cx = w - inset - boxW; cy = inset; }
+      else { cx = inset; cy = inset; }
+      const lum = 0.2126 * bg[0] + 0.7152 * bg[1] + 0.0722 * bg[2];
+      ctx.fillStyle = lum > 140 ? "rgba(70, 74, 82, 0.72)" : "rgba(230, 232, 236, 0.78)";
+      ctx.fillText(fittedScaled, cx, cy);
+    }
+    ctx.restore();
+    return;
+  }
+
+  let fontPx = Math.max(
     8,
     Math.min(
       28,
-      Math.round(((sizeCm / Math.max(printedHCm || 1, 1)) * h) * 10) / 10,
+      Math.round(((baseSizeCm / Math.max(printedHCm || 1, 1)) * h) * 10) / 10,
     ),
   );
+  // Apply direct multiplier based on selected size
+  if (baseSizeCm <= 0.13) fontPx = fontPx * 0.75;
+  else if (baseSizeCm >= 0.22) fontPx = fontPx * 1.5;
+  else if (baseSizeCm >= 0.19) fontPx = fontPx * 1.25;
+  fontPx = Math.max(8, Math.min(40, Math.round(fontPx)));
   ctx.save();
   ctx.font = `${fontPx}px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace`;
   ctx.textBaseline = "top";
@@ -431,9 +531,8 @@ function drawNameInEmptyCorner(ctx, w, h, label, printedWCm, printedHCm, targetC
     return;
   }
 
-  const bg = estimateBackgroundColor(ctx, w, h);
   const clearPad = Math.max(10, Math.round(fontPx * 2));
-  const corners = [
+  const cornerPositions = [
     { id: "br", x: w - inset - boxW, y: h - inset - boxH },
     { id: "bl", x: inset, y: h - inset - boxH },
     { id: "tr", x: w - inset - boxW, y: inset },
@@ -441,7 +540,7 @@ function drawNameInEmptyCorner(ctx, w, h, label, printedWCm, printedHCm, targetC
   ];
 
   let best = null;
-  for (const c of corners) {
+  for (const c of cornerPositions) {
     const sx = Math.max(0, c.x - clearPad);
     const sy = Math.max(0, c.y - clearPad);
     const sw = Math.min(w - sx, boxW + clearPad * 2);
@@ -519,7 +618,8 @@ async function exportPdf(state, onProgress) {
   const borderMode = state.borderMode.value;
   const cornerNameLabel = Boolean(state.cornerNameLabel?.checked);
   const cornerNameSizeEl = state.cornerNameSize || document.getElementById("cornerNameSize");
-  const cornerNameSizeCm = cornerNameSizeEl ? Number(cornerNameSizeEl.value) : 0.16;
+  const cornerNameSizeValue = cornerNameSizeEl ? cornerNameSizeEl.value : "0.16";
+  const cornerNameSizeCm = (cornerNameSizeValue === "max" || cornerNameSizeValue === "max3" || cornerNameSizeValue === "max2") ? cornerNameSizeValue : (Number(cornerNameSizeValue) || 0.16);
 
   const packed = packToA4(state.images, { marginCm, gutterCm, orientation });
   if (packed.pages.length === 0) throw new Error("Nothing to export");
