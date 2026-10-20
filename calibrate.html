@@ -13,14 +13,32 @@
           <a class="brand" href="./index.html" aria-label="ASG home">ASG</a>
           <div class="topbar__title">Calibration (A4)</div>
         </div>
-        <div class="topbar__actions">
+        <nav class="topbar__nav topbar__nav--scroll">
+          <div class="toolField">
+            <label class="setting__label" for="calOrientation">Orientation</label>
+            <select id="calOrientation">
+              <option value="portrait" selected>Portrait</option>
+              <option value="landscape">Landscape</option>
+            </select>
+          </div>
+          <div class="toolField toolField--narrow">
+            <label class="setting__label" for="ppcm">px/cm</label>
+            <input id="ppcm" type="number" min="5" max="200" step="0.1" value="26" />
+          </div>
+          <div class="toolField" style="flex: 1 1 200px; min-width: 160px;">
+            <label class="setting__label" for="ppcmSlider">Adjust</label>
+            <input id="ppcmSlider" type="range" min="10" max="120" step="0.5" value="26" style="width: 100%;" />
+          </div>
+          <div class="topbar__meta" style="white-space: nowrap;">
+            Saved as <span class="mono">ppcm</span>
+          </div>
           <a class="btn btn--ghost" href="./index.html">Menu</a>
           <a class="btn btn--primary" href="./packer.html">Packer</a>
-        </div>
+        </nav>
       </header>
 
-      <main class="main main--split">
-        <section class="panel panel--left">
+      <main class="main main--single">
+        <section class="panel">
           <div class="panel__title">Match your real A4 sheet</div>
 
           <div class="calInfo">
@@ -34,32 +52,6 @@
 
           <div class="calStage">
             <div id="a4Outline" class="a4Outline" aria-label="A4 outline"></div>
-          </div>
-        </section>
-
-        <section class="panel panel--right">
-          <div class="panel__title">Calibration</div>
-          <div class="settings">
-            <div class="setting">
-              <label class="setting__label" for="calOrientation">A4 orientation</label>
-              <select id="calOrientation">
-                <option value="portrait" selected>Portrait (21.0 cm wide)</option>
-                <option value="landscape">Landscape (29.7 cm wide)</option>
-              </select>
-            </div>
-            <div class="setting">
-              <label class="setting__label" for="ppcm">Pixels per cm</label>
-              <input id="ppcm" type="number" min="5" max="200" step="0.1" value="26" />
-            </div>
-            <div class="setting">
-              <label class="setting__label" for="ppcmSlider">Adjust</label>
-              <input id="ppcmSlider" type="range" min="10" max="120" step="0.5" value="26" />
-            </div>
-          </div>
-          <div class="panel__footer">
-            <div class="status">
-              Saved in your browser as <span class="mono">ppcm</span>. The packer page will use this for accurate cm previews.
-            </div>
           </div>
         </section>
       </main>

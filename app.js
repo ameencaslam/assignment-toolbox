@@ -400,16 +400,16 @@ function fitLabelText(ctx, text, maxWidth) {
   return t.length ? `${t}…` : "";
 }
 
-function drawNameInEmptyCorner(ctx, w, h, label, printedWCm, printedHCm) {
+function drawNameInEmptyCorner(ctx, w, h, label, printedWCm, printedHCm, targetCm) {
   const text = displayNameFromFileName(label);
   if (!text || w < 24 || h < 24) return;
 
-  const targetCm = 0.16;
+  const sizeCm = typeof targetCm === "number" && !Number.isNaN(targetCm) ? targetCm : 0.16;
   const fontPx = Math.max(
     8,
     Math.min(
       28,
-      Math.round(((targetCm / Math.max(printedHCm || 1, 1)) * h) * 10) / 10,
+      Math.round(((sizeCm / Math.max(printedHCm || 1, 1)) * h) * 10) / 10,
     ),
   );
   ctx.save();
@@ -498,6 +498,7 @@ async function rasterToPngBytes(file, rotate90, labelOpts) {
       labelOpts.name,
       labelOpts.wCm,
       labelOpts.hCm,
+      labelOpts.sizeCm,
     );
   }
 
@@ -508,7 +509,7 @@ async function rasterToPngBytes(file, rotate90, labelOpts) {
   return new Uint8Array(await blob.arrayBuffer());
 }
 
-async function exportPdf(state) {
+async function exportPdf(state, onProgress) {
   const { PDFDocument, degrees, rgb } = PDFLib;
   const pdfDoc = await PDFDocument.create();
 
@@ -517,6 +518,8 @@ async function exportPdf(state) {
   const orientation = state.orientation.value;
   const borderMode = state.borderMode.value;
   const cornerNameLabel = Boolean(state.cornerNameLabel?.checked);
+  const cornerNameSizeEl = state.cornerNameSize || document.getElementById("cornerNameSize");
+  const cornerNameSizeCm = cornerNameSizeEl ? Number(cornerNameSizeEl.value) : 0.16;
 
   const packed = packToA4(state.images, { marginCm, gutterCm, orientation });
   if (packed.pages.length === 0) throw new Error("Nothing to export");
@@ -527,24 +530,23 @@ async function exportPdf(state) {
   const pageHPt = cmToPt(pageHCm);
   const marginPt = cmToPt(marginCm);
 
-  // Cache encoded image bytes per (id, rotate90) to avoid re-encoding multiple times.
-  const pngCache = new Map();
+  // Calculate total items for progress tracking
+  const totalItems = packed.pages.reduce((sum, page) => sum + page.length, 0);
+  let processedItems = 0;
 
-  for (const pageItems of packed.pages) {
+  for (let pageIndex = 0; pageIndex < packed.pages.length; pageIndex++) {
+    const pageItems = packed.pages[pageIndex];
     const page = pdfDoc.addPage([pageWPt, pageHPt]);
 
-    for (const placed of pageItems) {
-      const key = `${placed.item.id}:${placed.rotate90 ? "r90" : "r0"}:${cornerNameLabel ? "n" : "x"}`;
-      let pngBytes = pngCache.get(key);
-      if (!pngBytes) {
-        pngBytes = await rasterToPngBytes(placed.item.file, placed.rotate90, {
-          enabled: cornerNameLabel,
-          name: placed.item.name,
-          wCm: placed.wCm,
-          hCm: placed.hCm,
-        });
-        pngCache.set(key, pngBytes);
-      }
+    for (let itemIndex = 0; itemIndex < pageItems.length; itemIndex++) {
+      const placed = pageItems[itemIndex];
+      const pngBytes = await rasterToPngBytes(placed.item.file, placed.rotate90, {
+        enabled: cornerNameLabel,
+        name: placed.item.name,
+        wCm: placed.wCm,
+        hCm: placed.hCm,
+        sizeCm: cornerNameSizeCm,
+      });
       const embedded = await pdfDoc.embedPng(pngBytes);
 
       const xPt = marginPt + cmToPt(placed.xCm);
@@ -573,7 +575,20 @@ async function exportPdf(state) {
           opacity: 0.65,
         });
       }
+
+      processedItems++;
+      if (onProgress) {
+        const progress = (processedItems / totalItems) * 100;
+        onProgress(Math.min(100, progress), processedItems, totalItems);
+      }
+
+      // Allow garbage collection between items
+      await new Promise((resolve) => setTimeout(resolve, 0));
     }
+  }
+
+  if (onProgress) {
+    onProgress(100, totalItems, totalItems);
   }
 
   const bytes = await pdfDoc.save();
@@ -642,6 +657,7 @@ function setup() {
   const orientation = document.getElementById("orientation");
   const borderMode = document.getElementById("borderMode");
   const cornerNameLabel = document.getElementById("cornerNameLabel");
+  const cornerNameSize = document.getElementById("cornerNameSize");
   const status = document.getElementById("status");
   const clearSavedBtn = document.getElementById("clearSavedBtn");
 
@@ -654,6 +670,7 @@ function setup() {
     orientation,
     borderMode,
     cornerNameLabel,
+    cornerNameSize,
     imageSettings: getImageSettingsMap(),
   };
 
@@ -920,15 +937,42 @@ function setup() {
     }
   });
 
+  const exportProgressWrap = document.getElementById("exportProgressWrap");
+  const exportProgressBar = document.getElementById("exportProgressBar");
+  const exportProgressLabel = document.getElementById("exportProgressLabel");
+
   exportBtn.addEventListener("click", async () => {
     try {
       setStatus("Packing into A4 pages and generating PDF…");
       exportBtn.disabled = true;
-      await exportPdf(state);
+      if (exportProgressWrap) {
+        exportProgressWrap.style.display = "flex";
+        exportProgressBar.style.width = "0%";
+        exportProgressLabel.textContent = "0%";
+      }
+      await exportPdf(state, (progress, processed, total) => {
+        if (exportProgressBar) {
+          exportProgressBar.style.width = `${Math.max(0, Math.min(100, progress))}%`;
+        }
+        if (exportProgressLabel) {
+          exportProgressLabel.textContent = `${Math.round(progress)}%`;
+        }
+        if (progress < 100) {
+          setStatus(`Processing image ${processed} of ${total}…`);
+        } else {
+          setStatus("Finalizing PDF…");
+        }
+      });
       setStatus("PDF downloaded as snippets-a4.pdf");
+      if (exportProgressWrap) {
+        exportProgressWrap.style.display = "none";
+      }
     } catch (e) {
       console.error(e);
       setStatus(`Export failed: ${e?.message || String(e)}`);
+      if (exportProgressWrap) {
+        exportProgressWrap.style.display = "none";
+      }
     } finally {
       exportBtn.disabled = state.images.length === 0;
     }

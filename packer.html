@@ -186,9 +186,26 @@
               >
               <input id="cornerNameLabel" type="checkbox" checked />
             </div>
+            <div class="setting">
+              <label class="setting__label" for="cornerNameSize"
+                >Corner name size</label
+              >
+              <select id="cornerNameSize">
+                <option value="0.12">Small</option>
+                <option value="0.16" selected>Medium</option>
+                <option value="0.20">Large</option>
+                <option value="0.25">X-Large</option>
+              </select>
+            </div>
           </div>
           <div class="panel__footer">
             <div id="status" class="status">Choose images to begin.</div>
+            <div class="progress" id="exportProgressWrap" style="display:none; margin-top:10px;">
+              <div class="progress__track">
+                <div class="progress__bar" id="exportProgressBar" style="width:0%"></div>
+              </div>
+              <div class="progress__label" id="exportProgressLabel">0%</div>
+            </div>
             <div class="panel__footer-extras">
               <button id="clearSavedBtn" class="btn btn--small" type="button">
                 Clear saved image settings
