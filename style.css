@@ -1015,12 +1015,11 @@ input[type="range"] {
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
   padding: 8px 11px;
-  background: rgba(255, 255, 255, 0.04);
+  background: rgba(18, 20, 30, 0.98);
   color: var(--text);
   font-family: inherit;
   font-size: 13px;
   width: 170px;
-  backdrop-filter: blur(8px);
 }
 
 .snippetField select:focus {
